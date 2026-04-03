@@ -34,6 +34,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import kotlin.coroutines.resume
 import org.json.JSONObject
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 
 class MainActivity : AppCompatActivity() {
 
@@ -65,9 +67,13 @@ class MainActivity : AppCompatActivity() {
     // Staged book files — filled one-by-one via stageBookFile bridge calls
     private val stagedBookFiles = mutableListOf<Triple<String, String, String>>() // (name, base64, mime)
 
-    // FIX 1: храним креденциалы для вставки в форму после загрузки страницы (delay(3000) больше не нужен)
     private var pendingLoginUsername: String? = null
     private var pendingLoginPassword: String? = null
+
+    private lateinit var webViewTranslator: WebView
+    private lateinit var webViewGeminiAuth: WebView
+    private var isTranslatorVisible = false
+    private var isGeminiAuthMode = false
 
     private val fileChooserLauncher = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
@@ -83,14 +89,20 @@ class MainActivity : AppCompatActivity() {
 
         webViewParser = findViewById(R.id.webViewParser)
         webViewForum = findViewById(R.id.webViewForum)
+        webViewTranslator = findViewById(R.id.webViewTranslator)
+        webViewGeminiAuth = findViewById(R.id.webViewGeminiAuth)
+        
         logPanel = findViewById(R.id.logPanel)
         logTextView = findViewById(R.id.logTextView)
         logScrollView = findViewById(R.id.logScrollView)
 
         setupLogPanel() 
-        findViewById<View>(R.id.btnShowLog)?.visibility = View.GONE
+        findViewById<View>(R.id.btnShowLog).visibility = View.VISIBLE
+        
         setupParserWebView()
         setupForumWebView()
+        setupTranslatorWebView()
+        setupGeminiAuthWebView()
 
         webViewParser.loadUrl("file:///android_asset/parser.html")
         checkExistingAuth()
@@ -282,6 +294,153 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun setupTranslatorWebView() {
+        webViewTranslator.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            allowFileAccess = true
+            allowContentAccess = true
+        }
+        webViewTranslator.addJavascriptInterface(ParserJsInterface(), "AndroidBridge")
+        webViewTranslator.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+            }
+        }
+        webViewTranslator.webChromeClient = object : WebChromeClient() {
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?
+            ): Boolean {
+                fileUploadCallback?.onReceiveValue(null)
+                fileUploadCallback = filePathCallback
+                try {
+                    fileChooserLauncher.launch(arrayOf("*/*"))
+                } catch (e: Exception) {
+                    fileUploadCallback = null
+                    AppLogger.e(TAG, "File chooser error: ${e.message}")
+                    return false
+                }
+                return true
+            }
+
+            override fun onConsoleMessage(cm: android.webkit.ConsoleMessage?): Boolean {
+                AppLogger.d("JS_BRIDGE", "JS: ${cm?.message()}")
+                return true
+            }
+        }
+        webViewTranslator.loadUrl("file:///android_asset/translator.html")
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun setupGeminiAuthWebView() {
+        webViewGeminiAuth.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+        }
+        webViewGeminiAuth.addJavascriptInterface(object {
+            @android.webkit.JavascriptInterface
+            fun logFromJs(msg: String) { AppLogger.d("JS_BRIDGE", "JS: $msg") }
+            @android.webkit.JavascriptInterface
+            fun onAutoExtractedKey(key: String) {
+                runOnUiThread {
+                    ParserJsInterface().onAutoExtractedKey(key)
+                }
+            }
+        }, "AndroidBridge")
+
+        webViewGeminiAuth.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                if (!isGeminiAuthMode || url == null) return
+                if (url.contains("aistudio.google.com") || url.contains("makersuite.google.com")) {
+                    view?.evaluateJavascript("""
+                        (function() {
+                            if (window._geminiScrapeInit) return;
+                            window._geminiScrapeInit = true;
+                            AndroidBridge.logFromJs("GEMINI_SCRAPER: v5.7 Active");
+                            
+                            function checkKey(text) {
+                                if (!text || typeof text !== 'string') return false;
+                                var m = text.match(/AIza[A-Za-z0-9_\-]{35,}/);
+                                if (m) {
+                                    AndroidBridge.logFromJs("GEMINI_SCRAPER: Key CAPTURED!");
+                                    if (window._geminiKeyPoller) clearInterval(window._geminiKeyPoller);
+                                    AndroidBridge.onAutoExtractedKey(m[0]); 
+                                    return true; 
+                                }
+                                return false;
+                            }
+                            
+                            window._geminiKeyPoller = setInterval(function() {
+                                try {
+                                    if (checkKey(document.body ? document.body.innerText : '')) return;
+                                    var allBtns = Array.from(document.querySelectorAll('button, .ms-button, [role="button"], .mat-mdc-button, .mdc-button'));
+                                    
+                                    // 1. TOS
+                                    var tos = document.querySelector('mat-checkbox[formcontrolname="tosAccepted"], .mat-mdc-checkbox, .mdc-checkbox__native-control');
+                                    if(tos && !window._didTOS) {
+                                        var isChecked = tos.checked || tos.parentElement.classList.contains('mdc-checkbox--selected');
+                                        if(!isChecked) {
+                                            window._didTOS = true;
+                                            AndroidBridge.logFromJs("Gemini: Accepting TOS...");
+                                            tos.click(); return;
+                                        }
+                                    }
+                                    var tosOk = allBtns.find(function(b) { 
+                                        var t = (b.innerText||'').toLowerCase();
+                                        return (t.includes('accept') || t.includes('agree') || t.includes('продолжить')) && !b.disabled;
+                                    });
+                                    if(tosOk && !window._didTOSOk) {
+                                        window._didTOSOk = true;
+                                        AndroidBridge.logFromJs("Gemini: Clicking TOS Accept...");
+                                        tosOk.click(); return;
+                                    }
+
+                                    // 2. Create API Key
+                                    var createBtn = allBtns.find(function(b) { 
+                                        var t = (b.innerText||"").toLowerCase();
+                                        return (t.includes("create api key") || t.includes("get api key")) && !b.disabled; 
+                                    });
+                                    if(createBtn && !window._didClickCreate) {
+                                        window._didClickCreate = true;
+                                        AndroidBridge.logFromJs("Gemini: Clicking Create API Key...");
+                                        createBtn.click(); return;
+                                    }
+
+                                    // 3. Project Selection
+                                    var projectItem = Array.from(document.querySelectorAll('.mat-mdc-list-item, .ms-list-item, [role="listitem"]')).find(function(el) {
+                                        var t = (el.innerText||'').toLowerCase();
+                                        return t.includes('gemini api') || t.includes('gen-lang-client');
+                                    });
+                                    if (projectItem && !window._didSelectProject) {
+                                        window._didSelectProject = true;
+                                        AndroidBridge.logFromJs("Gemini: Selecting project...");
+                                        projectItem.click(); return;
+                                    }
+
+                                    // 4. Final Confirmation
+                                    var finalBtn = allBtns.find(function(b) {
+                                        var bt = (b.innerText||'').toLowerCase();
+                                        return (bt.includes('import') || bt.includes('create') || bt.includes('подтвердить')) && !b.disabled;
+                                    });
+                                    if (finalBtn && window._didSelectProject && !window._didClickFinal) {
+                                        window._didClickFinal = true;
+                                        AndroidBridge.logFromJs("Gemini: Confirming key creation...");
+                                        finalBtn.click(); return;
+                                    }
+
+                                } catch(e) { }
+                            }, 2000);
+                        })();
+                    """.trimIndent(), null)
+                }
+            }
+        }
+    }
+
     /**
      * Polling кук каждые 300мс после submit формы логина — быстрее чем ждать onPageFinished
      */
@@ -433,6 +592,114 @@ class MainActivity : AppCompatActivity() {
                 parserCallback("window.onAuthStateChanged(false, '')")
                 Toast.makeText(this@MainActivity, "Выход выполнен", Toast.LENGTH_SHORT).show()
                 AppLogger.d(TAG, "Logged out")
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun openTranslator() {
+            runOnUiThread {
+                showTranslatorWebView()
+                AppLogger.d(TAG, "openTranslator: Switching to translator tab")
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun openTranslator(fileBase64: String, fileName: String) {
+            runOnUiThread {
+                showTranslatorWebView()
+                translatorCallback("window.onFileLoaded('$fileBase64', '$fileName')")
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun returnToParser() {
+            runOnUiThread {
+                showParserWebView()
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun doGeminiAuth() {
+            runOnUiThread {
+                isGeminiAuthMode = true
+                showGeminiAuthWebView()
+                webViewGeminiAuth.loadUrl("https://aistudio.google.com/app/apikey")
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun onAutoExtractedKey(key: String) {
+            runOnUiThread {
+                isGeminiAuthMode = false
+                showTranslatorWebView()
+                translatorCallback("window.onGeminiKeyReceived('$key')")
+                AppLogger.d("GEMINI_SCRAPER", "Key restored to translator")
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun saveSetting(key: String, value: String) {
+            val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+            prefs.edit().putString(key, value).apply()
+            AppLogger.d(TAG, "Setting saved: $key")
+        }
+
+        @android.webkit.JavascriptInterface
+        fun getSetting(key: String, defaultVal: String): String {
+            val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+            return prefs.getString(key, defaultVal) ?: defaultVal
+        }
+
+        @android.webkit.JavascriptInterface
+        fun nativeRequest(url: String, method: String, body: String, headersJson: String, callbackJsId: String) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                AppLogger.d("NATIVE_FETCH", "Start $method request: $url")
+                try {
+                    val client = okhttp3.OkHttpClient.Builder()
+                        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                        .build()
+
+                    val requestBuilder = okhttp3.Request.Builder().url(url)
+                    
+                    // Parse headers
+                    if (headersJson.isNotEmpty()) {
+                        val headersObj = JSONObject(headersJson)
+                        headersObj.keys().forEach { key ->
+                            requestBuilder.header(key, headersObj.getString(key))
+                        }
+                    }
+
+                    if (method.equals("POST", ignoreCase = true)) {
+                        val mediaType = "application/json; charset=utf-8".toMediaTypeOrNull()
+                        requestBuilder.post(body.toRequestBody(mediaType))
+                    }
+
+                    val response = client.newCall(requestBuilder.build()).execute()
+                    val respBody = response.body?.string() ?: ""
+                    
+                    if (response.isSuccessful) {
+                        AppLogger.d("NATIVE_FETCH", "Success! Result length: ${respBody.length}")
+                        val b64 = android.util.Base64.encodeToString(respBody.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+                        runOnUiThread {
+                            translatorCallback("window.onNativeResponse('$callbackJsId', null, '$b64')")
+                        }
+                    } else {
+                        val err = "HTTP ${response.code}: $respBody"
+                        AppLogger.e("NATIVE_FETCH", "Failed: $err")
+                        val b64Err = android.util.Base64.encodeToString(err.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+                        runOnUiThread {
+                            translatorCallback("window.onNativeResponse('$callbackJsId', '$b64Err', null)")
+                        }
+                    }
+                } catch (e: Exception) {
+                    val err = e.message ?: "Unknown error"
+                    AppLogger.e("NATIVE_FETCH", "Error: $err")
+                    val b64Err = android.util.Base64.encodeToString(err.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+                    runOnUiThread {
+                        translatorCallback("window.onNativeResponse('$callbackJsId', '$b64Err', null)")
+                    }
+                }
             }
         }
 
@@ -674,31 +941,29 @@ class MainActivity : AppCompatActivity() {
                         AppLogger.d(TAG, "HTTP fallback result: author=$authorName downloads=$totalDownloads title=$title")
                         
                         // Extract file attachment URL if available
-                        var bookFileUrl: String? = null
-                        var bookFileName: String? = null
+                        val bookAttachmentsCollection = mutableListOf<JSONObject>()
                         
-                        // Search scope: try postWrapper first, then full doc
+                        // Search scope: if postWrapper is found, search ONLY inside it.
+                        // Filter out signatures to avoid parsing links from user signatures.
                         val searchScopes = mutableListOf<org.jsoup.nodes.Element>()
                         if (postWrapper != null) {
-                            searchScopes.add(postWrapper)
-                            AppLogger.d(TAG, "postWrapper found, searching for attachments inside it first")
+                            val cleanPost = postWrapper.clone()
+                            cleanPost.select(".signature, .sig, .post_sig").remove()
+                            searchScopes.add(cleanPost)
+                            AppLogger.d(TAG, "postWrapper found, searching ONLY inside it (excluding signature).")
                         } else {
-                            AppLogger.d(TAG, "postWrapper is NULL — searching full document for attachments")
+                            AppLogger.d(TAG, "postWrapper is NULL — searching full document as fallback.")
+                            searchScopes.add(doc)
                         }
-                        searchScopes.add(doc) // Always add full doc as fallback
                         
                         for (scope in searchScopes) {
-                            AppLogger.d(TAG, "DUMPING HTML SCOPE (first 1000 chars): ${scope.html().take(1000)}")
-                            if (bookFileUrl != null) break
                             val links = scope.select("a[href*=\"dl.4pda.to\"], a[href*=\"4pda.to/forum/dl/post/\"], a[href*=\"/forum/dl/post/\"], a[href*=\"act=attach\"]")
-                            AppLogger.d(TAG, "Found ${links.size} potential attachment links in scope ${if (scope == doc) "FULL DOC" else "postWrapper"}")
+                            AppLogger.d(TAG, "Found ${links.size} potential attachment links in scope ${if (scope == doc) "FULL DOC" else "POST"}")
                             
                             for (link in links) {
                                 val href = link.attr("abs:href").ifEmpty { link.attr("href") }
                                 val text = link.text().lowercase()
                                 val hrefLower = href.lowercase()
-                                
-                                AppLogger.d(TAG, "Checking link: text='$text' href='$href'")
                                 
                                 val isImage = text.contains(".jpg") || text.contains(".png") || text.contains(".jpeg") || text.contains(".gif") || text.contains(".webp") ||
                                               hrefLower.endsWith(".jpg") || hrefLower.endsWith(".png") || hrefLower.endsWith(".jpeg") || hrefLower.endsWith(".gif") || hrefLower.endsWith(".webp")
@@ -710,29 +975,51 @@ class MainActivity : AppCompatActivity() {
                                                  hrefLower.contains(".fb2?") || hrefLower.contains(".epub?") ||
                                                  hrefLower.contains(".zip?") || hrefLower.contains(".pdf?"))
                                 
-                                if (isBookFile) {
-                                    AppLogger.d(TAG, "Found book attachment in HTML: $text -> $href")
-                                    bookFileUrl = when {
+                                if (isBookFile || isImage) {
+                                    val finalUrl = when {
                                         href.startsWith("//") -> "https:$href"
                                         href.startsWith("/") -> "https://4pda.to$href"
                                         else -> href
                                     }
                                     
                                     var fname = link.text()
-                                    val extMatch = Regex("(?i)(.*\\.(?:zip|fb2|epub|pdf))").find(fname)
-                                    if (extMatch != null) {
-                                        fname = extMatch.groupValues[1]
-                                    } else {
-                                        fname = "book.fb2.zip" // fallback filename (like in reference APK)
+                                    if (isBookFile) {
+                                        val extMatch = Regex("(?i)(.*\\.(?:zip|fb2|epub|pdf))").find(fname)
+                                        if (extMatch != null) fname = extMatch.groupValues[1]
+                                        else fname = "book.fb2.zip"
                                     }
-                                    bookFileName = fname
-                                    AppLogger.d(TAG, "Book file URL: $bookFileUrl, fileName: $bookFileName")
-                                    break
+                                    
+                                    val urlIdMatch = Regex("[?&]id=(\\d+)").find(finalUrl)
+                                        ?: Regex("/dl/post/(\\d+)").find(finalUrl)
+                                    val attachId = urlIdMatch?.groupValues?.get(1)
+                                    
+                                    if (isBookFile) {
+                                        if (bookAttachmentsCollection.none { it.getString("url") == finalUrl }) {
+                                            bookAttachmentsCollection.add(JSONObject().apply {
+                                                put("url", finalUrl)
+                                                put("name", fname)
+                                                if (attachId != null) put("id", attachId)
+                                            })
+                                            AppLogger.d(TAG, "Found book attachment: $fname (ID: $attachId) -> $finalUrl")
+                                        }
+                                    } else {
+                                        // It's an image (likely a cover)
+                                        val imageList = postData?.optJSONArray("coverAttachments") ?: JSONArray().also { postData?.put("coverAttachments", it) }
+                                        val alreadyExists = (0 until imageList.length()).any { imageList.getJSONObject(it).getString("url") == finalUrl }
+                                        if (!alreadyExists) {
+                                            imageList.put(JSONObject().apply {
+                                                put("url", finalUrl)
+                                                put("name", fname)
+                                                if (attachId != null) put("id", attachId)
+                                            })
+                                            AppLogger.d(TAG, "Found image attachment: $fname (ID: $attachId) -> $finalUrl")
+                                        }
+                                    }
                                 }
                             }
                         }
                         
-                        if (bookFileUrl == null) {
+                        if (bookAttachmentsCollection.isEmpty()) {
                             AppLogger.w(TAG, "No book file attachment found in HTML! Page title: $title, HTML length: ${fullHtml.length}")
                         }
                         
@@ -742,122 +1029,123 @@ class MainActivity : AppCompatActivity() {
                             put("authorName", authorName)
                             if (extractedAuthorId != null) put("authorId", extractedAuthorId)
                             put("totalDownloads", totalDownloads)
-                            if (bookFileUrl != null) {
-                                put("bookFileUrl", bookFileUrl)
-                                put("bookFileName", bookFileName)
-                            }
+                            
+                            val arr = JSONArray()
+                            bookAttachmentsCollection.forEach { arr.put(it) }
+                            put("bookAttachments", arr)
                         }
                     }
                     
                     if (postData != null) {
-                        // If we have a book file URL, download it now
-                        val bookFileUrl = postData?.optString("bookFileUrl", null)
-                        val bookFileName = postData?.optString("bookFileName", null)
-                        
-                        if (!bookFileUrl.isNullOrEmpty()) {
-                            try {
-                                AppLogger.d(TAG, "Downloading attachment from $bookFileUrl ...")
-                                
-                                val sb = StringBuilder()
-                                for (c in bookFileUrl) {
-                                    if (c > '\u007F' || c == ' ') {
-                                        sb.append(java.net.URLEncoder.encode(c.toString(), "UTF-8").replace("+", "%20"))
-                                    } else {
-                                        sb.append(c)
-                                    }
+                        // Санитаризируем все имена в списке аттачей перед дальнейшей обработкой
+                        val attachmentsToDownload = postData.optJSONArray("bookAttachments")
+                        if (attachmentsToDownload != null) {
+                            for (i in 0 until attachmentsToDownload.length()) {
+                                val att = attachmentsToDownload.getJSONObject(i)
+                                val original = att.optString("name")
+                                if (original.isNotEmpty()) {
+                                    att.put("name", sanitizeFileName(original))
                                 }
-                                val safeBookFileUrl = sb.toString()
-
-                                val dohClient = okhttp3.OkHttpClient.Builder()
-                                    .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-                                    .build()
-                                    
-                                val customDns = object : okhttp3.Dns {
-                                    override fun lookup(hostname: String): List<java.net.InetAddress> {
-                                        try {
-                                            return okhttp3.Dns.SYSTEM.lookup(hostname)
-                                        } catch (e: java.net.UnknownHostException) {
-                                            AppLogger.w(TAG, "System DNS failed for $hostname, trying DoH fallback...")
-                                            try {
-                                                val req = okhttp3.Request.Builder()
-                                                    .url("https://dns.google/resolve?name=$hostname&type=A")
-                                                    .build()
-                                                val resp = dohClient.newCall(req).execute()
-                                                val body = resp.body?.string()
-                                                if (resp.isSuccessful && body != null) {
-                                                    val json = org.json.JSONObject(body)
-                                                    val answers = json.optJSONArray("Answer")
-                                                    if (answers != null && answers.length() > 0) {
-                                                        val ips = mutableListOf<java.net.InetAddress>()
-                                                        for (i in 0 until answers.length()) {
-                                                            val answer = answers.getJSONObject(i)
-                                                            if (answer.optInt("type") == 1) { // A record
-                                                                ips.add(java.net.InetAddress.getByName(answer.getString("data")))
-                                                            }
-                                                        }
-                                                        if (ips.isNotEmpty()) {
-                                                            AppLogger.d(TAG, "DoH resolved $hostname to ${ips.map { it.hostAddress }}")
-                                                            return ips
-                                                        }
-                                                    }
-                                                }
-                                            } catch (ex: Exception) {
-                                                AppLogger.e(TAG, "DoH lookup failed", ex)
-                                            }
-                                            throw e
-                                        }
-                                    }
-                                }
-
-                                val client = okhttp3.OkHttpClient.Builder()
-                                    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-                                    .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-                                    .dns(customDns)
-                                    .followRedirects(true)
-                                    .followSslRedirects(true)
-                                    .addNetworkInterceptor { chain ->
-                                        val builder = chain.request().newBuilder()
-                                            .header("User-Agent", MOBILE_UA)
-                                            .header("Cookie", allCookies)
-                                            .header("Referer", url)
-                                            .header("Accept", "*/*")
-                                        chain.proceed(builder.build())
-                                    }
-                                    .build()
-
-                                val req = okhttp3.Request.Builder()
-                                    .url(safeBookFileUrl)
-                                    .build()
-                                    
-                                val response = client.newCall(req).execute()
-                                if (response.isSuccessful) {
-                                    val bytes = response.body?.bytes()
-                                    if (bytes != null && bytes.isNotEmpty()) {
-                                        val headStr = String(bytes.take(200).toByteArray(), Charsets.UTF_8).lowercase()
-                                        if (headStr.contains("<!doctype html") || headStr.contains("<html")) {
-                                            val fullHtml = String(bytes, Charsets.UTF_8)
-                                            val titleMatch = Regex("<title>(.*?)</title>", RegexOption.IGNORE_CASE).find(fullHtml)
-                                            val pageTitle = titleMatch?.groupValues?.get(1)?.trim() ?: "HTML страница"
-                                            AppLogger.e(TAG, "Server returned HTML instead of file! Title: $pageTitle")
-                                            postData?.put("downloadError", "Сервер 4PDA вернул веб-страницу вместо файла: \"$pageTitle\". Возможно, проблема с авторизацией или ссылка устарела.")
-                                        } else {
-                                            val fileBase64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                                            postData?.put("fileBase64", fileBase64)
-                                            postData?.put("fileName", bookFileName)
-                                            AppLogger.d(TAG, "Attachment downloaded successfully: ${bytes.size} bytes")
-                                        }
-                                    } else {
-                                        postData?.put("downloadError", "Файл пуст")
-                                    }
-                                } else {
-                                    AppLogger.e(TAG, "Failed to download attachment: HTTP ${response.code}")
-                                    postData?.put("downloadError", "HTTP ${response.code}")
-                                }
-                            } catch (e: Exception) {
-                                AppLogger.e(TAG, "Error downloading attachment", e)
-                                postData?.put("downloadError", "Ошибка сети: ${e.message}")
                             }
                         }
+                        
+                        val finalFiles = JSONArray()
+                        // Теперь attachmentsToDownload уже содержат санитаризированные имена
+                            val dohClient = okhttp3.OkHttpClient.Builder()
+                                .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                                .build()
+                                
+                            val customDns = object : okhttp3.Dns {
+                                override fun lookup(hostname: String): List<java.net.InetAddress> {
+                                    try {
+                                        return okhttp3.Dns.SYSTEM.lookup(hostname)
+                                    } catch (e: java.net.UnknownHostException) {
+                                        try {
+                                            val req = okhttp3.Request.Builder()
+                                                .url("https://dns.google/resolve?name=$hostname&type=A")
+                                                .build()
+                                            val resp = dohClient.newCall(req).execute()
+                                            val body = resp.body?.string()
+                                            if (resp.isSuccessful && body != null) {
+                                                val json = org.json.JSONObject(body)
+                                                val answers = json.optJSONArray("Answer")
+                                                if (answers != null && answers.length() > 0) {
+                                                    val ips = mutableListOf<java.net.InetAddress>()
+                                                    for (i in 0 until answers.length()) {
+                                                        val answer = answers.getJSONObject(i)
+                                                        if (answer.optInt("type") == 1) { 
+                                                            ips.add(java.net.InetAddress.getByName(answer.getString("data")))
+                                                        }
+                                                    }
+                                                    if (ips.isNotEmpty()) return ips
+                                                }
+                                            }
+                                        } catch (ex: Exception) { }
+                                        throw e
+                                    }
+                                }
+                            }
+
+                            val client = okhttp3.OkHttpClient.Builder()
+                                .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                                .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                                .dns(customDns)
+                                .followRedirects(true)
+                                .followSslRedirects(true)
+                                .addNetworkInterceptor { chain ->
+                                    val builder = chain.request().newBuilder()
+                                        .header("User-Agent", MOBILE_UA)
+                                        .header("Cookie", allCookies)
+                                        .header("Referer", url)
+                                        .header("Accept", "*/*")
+                                    chain.proceed(builder.build())
+                                }
+                                .build()
+
+                                    val limit = minOf(attachmentsToDownload.length(), 10)
+                                    for (i in 0 until limit) {
+                                        try {
+                                            val att = attachmentsToDownload.getJSONObject(i)
+                                            val bookUrl = att.getString("url")
+                                            val bookName = att.getString("name") // Уже санитаризировано выше
+                                            
+                                            AppLogger.d(TAG, "Downloading file $i: $bookName")
+                                            
+                                            val sb = StringBuilder()
+                                            for (c in bookUrl) {
+                                                if (c > '\u007F' || c == ' ') {
+                                                    sb.append(java.net.URLEncoder.encode(c.toString(), "UTF-8").replace("+", "%20"))
+                                                } else {
+                                                    sb.append(c)
+                                                }
+                                            }
+                                            val safeUrl = sb.toString()
+                                            val req = okhttp3.Request.Builder().url(safeUrl).build()
+                                            val response = client.newCall(req).execute()
+                                            
+                                            if (response.isSuccessful) {
+                                                val bytes = response.body?.bytes()
+                                                if (bytes != null && bytes.isNotEmpty()) {
+                                                    val headStr = String(bytes.take(200).toByteArray(), Charsets.UTF_8).lowercase()
+                                                    if (!headStr.contains("<!doctype html") && !headStr.contains("<html")) {
+                                                        val fileObj = JSONObject().apply {
+                                                            put("fileName", bookName)
+                                                            put("fileBase64", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP))
+                                                            val urlIdMatch = Regex("[?&]id=(\\d+)").find(bookUrl)
+                                                                ?: Regex("/dl/post/(\\d+)").find(bookUrl)
+                                                            val fileId = urlIdMatch?.groupValues?.get(1)
+                                                            if (fileId != null) put("fileId", fileId)
+                                                        }
+                                                        finalFiles.put(fileObj)
+                                                    }
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            AppLogger.e(TAG, "Sequential download failed for a file", e)
+                                        }
+                        }
+                        
+                        postData?.put("files", finalFiles)
                         
                         withContext(Dispatchers.Main) {
                             val jsonBase64 = android.util.Base64.encodeToString(postData.toString().toByteArray(), android.util.Base64.NO_WRAP)
@@ -967,7 +1255,7 @@ class MainActivity : AppCompatActivity() {
                                     )
                                 }
                                 if (success) coversAttachedCount++
-                                delay(if (isLast) 500L else 50L) // Increased delay only on last
+                                delay(if (isLast) 1000L else 800L)
                             } catch (e: Exception) {
                                 AppLogger.e(TAG, "Cover file attach error ($name): ${e.message}", e)
                             }
@@ -1024,7 +1312,7 @@ class MainActivity : AppCompatActivity() {
                             } else {
                                 AppLogger.e(TAG, "Failed to attach $name to any input")
                             }
-                            delay(if (isLast) 800L else 50L)
+                            delay(1000L)
                         } catch (e: Exception) {
                             AppLogger.e(TAG, "Book file attach error ($name): ${e.message}", e)
                         }
@@ -1071,7 +1359,7 @@ class MainActivity : AppCompatActivity() {
                     series = data.optString("series").takeIf { it.isNotEmpty() },
                     seriesBooks = data.optString("seriesBooks").ifEmpty { data.optString("series") }.takeIf { it.isNotEmpty() },
                     authorInfo = data.optString("authorInfo").takeIf { it.isNotEmpty() },
-                    downloads = if (data.has("downloads") && !data.isNull("downloads")) { val d = data.optInt("downloads"); if (d > 0) d else null } else null,
+                    downloads = if (data.has("downloads") && !data.isNull("downloads")) data.optInt("downloads") else null,
                     originalPostUrl = data.optString("originalPostUrl").takeIf { it.isNotEmpty() },
                     uploader = data.optString("uploader").takeIf { it.isNotEmpty() },
                                     publishYear = data.optString("year").takeIf { it.isNotEmpty() },
@@ -1085,6 +1373,8 @@ class MainActivity : AppCompatActivity() {
                     enableSignature = data.optBoolean("enableSignature", true),
                     enableEmailNotification = data.optBoolean("enableEmailNotification", false)
                 )
+
+                AppLogger.d(TAG, "Publication Metadata: downloads=${metadata.downloads}, uploader=${metadata.uploader}, postUrl=${metadata.originalPostUrl}")
 
                 val bbCode = data.optString("bbcode")
 
@@ -1183,19 +1473,94 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+    private suspend fun downloadAttachment(url: String, cookies: String, referer: String): ByteArray? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val sb = StringBuilder()
+                for (c in url) {
+                    if (c > '\u007F' || c == ' ') {
+                        sb.append(java.net.URLEncoder.encode(c.toString(), "UTF-8").replace("+", "%20"))
+                    } else {
+                        sb.append(c)
+                    }
+                }
+                val safeUrl = sb.toString()
+
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .followRedirects(true)
+                    .addNetworkInterceptor { chain ->
+                        val builder = chain.request().newBuilder()
+                            .header("User-Agent", MOBILE_UA)
+                            .header("Cookie", cookies)
+                            .header("Referer", referer)
+                            .header("Accept", "*/*")
+                        chain.proceed(builder.build())
+                    }
+                    .build()
+
+                val req = okhttp3.Request.Builder().url(safeUrl).build()
+                val resp = client.newCall(req).execute()
+                if (resp.isSuccessful) {
+                    val bytes = resp.body?.bytes()
+                    if (bytes != null && bytes.isNotEmpty()) {
+                        val head = String(bytes.take(200).toByteArray(), Charsets.UTF_8).lowercase()
+                        if (head.contains("<!doctype html") || head.contains("<html")) {
+                            null
+                        } else {
+                            bytes
+                        }
+                    } else null
+                } else null
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+
     // ════════════════════════════════════════════════
     //  VIEW TOGGLING (forum for debug)
     // ════════════════════════════════════════════════
     private fun showForumWebView() {
         isForumVisible = true
+        isTranslatorVisible = false
+        isGeminiAuthMode = false
         webViewForum.visibility = View.VISIBLE
         webViewParser.visibility = View.GONE
+        webViewTranslator.visibility = View.GONE
+        webViewGeminiAuth.visibility = View.GONE
     }
 
     private fun showParserWebView() {
         isForumVisible = false
+        isTranslatorVisible = false
+        isGeminiAuthMode = false
         webViewParser.visibility = View.VISIBLE
         webViewForum.visibility = View.GONE
+        webViewTranslator.visibility = View.GONE
+        webViewGeminiAuth.visibility = View.GONE
+    }
+
+    private fun showTranslatorWebView() {
+        isForumVisible = false
+        isTranslatorVisible = true
+        isGeminiAuthMode = false
+        webViewTranslator.visibility = View.VISIBLE
+        webViewParser.visibility = View.GONE
+        webViewForum.visibility = View.GONE
+        webViewGeminiAuth.visibility = View.GONE
+    }
+
+    private fun showGeminiAuthWebView() {
+        isForumVisible = false
+        isTranslatorVisible = false
+        isGeminiAuthMode = true
+        webViewGeminiAuth.visibility = View.VISIBLE
+        webViewParser.visibility = View.GONE
+        webViewForum.visibility = View.GONE
+        webViewTranslator.visibility = View.GONE
     }
 
     // ════════════════════════════════════════════════
@@ -1288,10 +1653,46 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun sanitizeFileName(name: String): String {
+        if (name.isBlank()) return name
+        
+        // Определяем расширение для сохранения
+        val lowerName = name.lowercase()
+        val isDoubleExt = lowerName.endsWith(".fb2.zip")
+        
+        val ext = if (isDoubleExt) ".fb2.zip" else {
+            val lastIdx = name.lastIndexOf('.')
+            if (lastIdx > 0) name.substring(lastIdx) else ""
+        }
+        
+        val baseName = if (isDoubleExt) {
+            name.substring(0, name.length - 8)
+        } else {
+            val lastIdx = name.lastIndexOf('.')
+            if (lastIdx > 0) name.substring(0, lastIdx) else name
+        }
+        
+        // Символы-разделители: пробел, точка, подчерк, тире (все виды), скобки (все виды)
+        val separatorRegex = Regex("[\\s._\\-—–\\(\\)\\[\\]\\{\\}]+")
+        var cleaned = baseName.replace(separatorRegex, "_")
+        
+        // Убираем подчеркивания с краев
+        cleaned = cleaned.trim('_')
+        
+        if (cleaned.isEmpty()) return name
+        
+        return "$cleaned$ext"
+    }
+
+    private fun translatorCallback(js: String) {
+        val safeJs = "try { $js } catch(e) { console.error('translatorCallback error:', e); }"
+        runOnUiThread {
+            webViewTranslator.evaluateJavascript(safeJs, null)
+        }
+    }
+
     private fun parserCallback(js: String) {
         val safeJs = "try { $js } catch(e) { console.error('parserCallback error:', e); if(typeof actionLog==='function') actionLog('parserCallback error: ' + e.message, 'err'); }"
-        AppLogger.d(TAG, "parserCallback: $safeJs")
-        // Always run Javascript on the main thread
         runOnUiThread {
             webViewParser.evaluateJavascript(safeJs, null)
         }
@@ -1308,6 +1709,8 @@ class MainActivity : AppCompatActivity() {
     override fun onBackPressed() {
         if (isForumVisible) {
             showParserWebView()
+        } else if (isTranslatorVisible) {
+            showParserWebView()
         } else if (webViewParser.canGoBack()) {
             webViewParser.goBack()
         } else {
@@ -1319,6 +1722,8 @@ class MainActivity : AppCompatActivity() {
         AppLogger.removeListener(logListener)
         webViewParser.destroy()
         webViewForum.destroy()
+        webViewTranslator.destroy()
+        webViewGeminiAuth.destroy()
         super.onDestroy()
     }
 }

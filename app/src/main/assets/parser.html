@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>Парсер книг 2</title>
+    <title>Книжная лавка</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -12,121 +12,115 @@
     <script src="pdf.min.js"></script>
     <style>
         :root {
-            --primary: #2563eb;
-            --primary-gradient: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
-            --bg: #f8fafc;
-            --card-bg: rgba(255, 255, 255, 0.9);
-            --text-main: #1e293b;
-            --text-sub: #64748b;
-            --border: #e2e8f0;
-            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-            --radius: 16px;
+            --primary: #8b5cf6;
+            --primary-dark: #6d28d9;
+            --primary-glow: rgba(139, 92, 246, 0.4);
+            --accent: #f43f5e;
+            --bg: #0f172a;
+            --bg-dots: radial-gradient(#1e293b 1px, transparent 1px);
+            --card: rgba(30, 41, 59, 0.7);
+            --card-border: rgba(255, 255, 255, 0.1);
+            --text: #f8fafc;
+            --sub: #94a3b8;
+            --radius: 20px;
+            --glass: blur(12px);
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
-
+        * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+        
         body {
-            font-family: 'Inter', -apple-system, sans-serif;
+            font-family: 'Inter', system-ui, sans-serif;
             background: var(--bg);
-            color: var(--text-main);
+            background-image: var(--bg-dots);
+            background-size: 24px 24px;
+            color: var(--text);
             min-height: 100vh;
             padding-bottom: 60px;
-            line-height: 1.5;
         }
 
+        /* Beautiful Header */
         .header {
-            background: var(--primary-gradient);
-            color: white;
-            padding: 24px 20px;
+            background: linear-gradient(165deg, #4f46e5 0%, #7c3aed 100%);
+            padding: 30px 20px;
+            border-bottom-left-radius: 32px;
+            border-bottom-right-radius: 32px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3), 0 0 15px var(--primary-glow);
             position: relative;
             overflow: hidden;
-            border-bottom-left-radius: 24px;
-            border-bottom-right-radius: 24px;
-            box-shadow: var(--shadow-md);
             display: flex;
             align-items: center;
             gap: 16px;
+            margin-bottom: 20px;
         }
 
-        .header::after {
-            content: '';
-            position: absolute;
-            top: -50%;
-            right: -10%;
-            width: 200px;
-            height: 200px;
-            background: rgba(255, 255, 255, 0.1);
+        .header::before {
+            content: ''; position: absolute; top: -50%; left: -20%; width: 200px; height: 200px;
+            background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
             border-radius: 50%;
-            pointer-events: none;
         }
 
         .header-logo {
-            width: 48px;
-            height: 48px;
-            background: white;
-            border-radius: 12px;
-            padding: 4px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            width: 54px; height: 54px;
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(8px);
+            border-radius: 16px;
+            padding: 8px;
+            border: 1px solid rgba(255,255,255,0.2);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 2;
         }
+        .header-logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
 
-        .header-logo img {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
+        .header-text { flex: 1; z-index: 2; }
+        .header h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+        .header span { font-size: 12px; opacity: 0.8; display: block; margin-top: 2px; }
+
+        .btn-translate-nav {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white; padding: 10px 16px; border-radius: 14px;
+            font-size: 13px; font-weight: 700; cursor: pointer;
+            z-index: 10; transition: all 0.2s;
         }
+        .btn-translate-nav:active { transform: scale(0.95); background: rgba(255, 255, 255, 0.25); }
 
-        .header-text {
-            flex: 1;
-        }
-
-        .header h1 {
-            font-size: 20px;
-            font-weight: 700;
-            letter-spacing: -0.5px;
-        }
-
-        .header span {
-            font-size: 13px;
-            font-weight: 400;
-            opacity: 0.9;
-            display: block;
-            margin-top: 2px;
-        }
-
-        .upload-area {
-            border: 2px dashed var(--border);
+        /* Premium Cards */
+        .card {
+            background: var(--card);
+            backdrop-filter: var(--glass);
+            -webkit-backdrop-filter: var(--glass);
+            border: 1px solid var(--card-border);
             border-radius: var(--radius);
-            padding: 32px 20px;
+            padding: 20px;
+            margin: 0 16px 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+
+        .section-header {
+            font-size: 11px; font-weight: 700; color: #a5b4fc;
+            text-transform: uppercase; letter-spacing: 1.2px;
+            margin: 24px 20px 8px;
+        }
+
+        /* Upload Area */
+        .upload-area {
+            border: 2px dashed rgba(255,255,255,0.1);
+            border-radius: var(--radius);
+            padding: 40px 20px;
             text-align: center;
-            background: white;
+            background: rgba(255,255,255,0.02);
             cursor: pointer;
             margin: 20px 16px;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: var(--shadow-sm);
+            transition: all 0.3s;
         }
-
-        .upload-area:active,
-        .upload-area.drag {
-            background: #eff6ff;
+        .upload-area:hover, .upload-area.drag {
             border-color: var(--primary);
-            transform: scale(0.98);
+            background: rgba(139, 92, 246, 0.05);
         }
-
-        .upload-area p {
-            font-size: 14px;
-            color: var(--text-sub);
-            margin-top: 8px;
-            font-weight: 500;
-        }
+        .upload-area p { font-size: 13px; color: var(--sub); margin-top: 10px; }
+        .upload-icon { font-size: 48px; margin-bottom: 12px; display: block; }
 
         .upload-icon {
             font-size: 44px;
@@ -137,165 +131,90 @@
             display: none;
         }
 
-        .status {
-            margin: 0 16px 12px;
-            padding: 12px 16px;
-            border-radius: 12px;
-            font-size: 14px;
-            font-weight: 500;
-            display: none;
-            animation: slideIn 0.3s ease-out;
-            box-shadow: var(--shadow-sm);
-        }
-
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .status.show {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .status.ok {
-            background: #f0fdf4;
-            color: #166534;
-            border: 1px solid #bbf7d0;
-        }
-
-        .status.err {
-            background: #fef2f2;
-            color: #991b1b;
-            border: 1px solid #fecaca;
-        }
-
-        .status.inf {
-            background: #eff6ff;
-            color: #1e40af;
-            border: 1px solid #bfdbfe;
-        }
-
         .auth-block {
-            background: var(--card-bg);
-            backdrop-filter: blur(10px);
-            margin: 16px;
-            padding: 16px;
+            background: var(--card);
+            backdrop-filter: var(--glass);
+            margin: 0 16px 16px;
+            padding: 18px;
             border-radius: var(--radius);
             display: flex;
             align-items: center;
             gap: 14px;
-            box-shadow: var(--shadow-sm);
-            border: 1px solid white;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            border: 1px solid var(--card-border);
+            border-left: 4px solid #ef4444;
         }
 
-        .bridge-status {
-            position: fixed;
-            top: 2px;
-            right: 8px;
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 4px;
-            z-index: 9999;
-            pointer-events: none;
-            opacity: 0.8;
+        .auth-block.auth-ok { border-left-color: #10b981; }
+
+        .auth-icon {
+            font-size: 24px; width: 48px; height: 48px;
+            background: rgba(255,255,255,0.05);
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 14px; border: 1px solid rgba(255,255,255,0.1);
         }
 
-        .bridge-ok {
-            background: #28a745;
-            color: white;
+        .auth-name { font-size: 15px; font-weight: 800; color: #fff; }
+        .auth-sub { font-size: 12px; color: var(--sub); margin-top: 2px; }
+
+        .btn-auth-login {
+            background: var(--primary); color: #fff; border: none;
+            padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 700;
+            cursor: pointer; box-shadow: 0 4px 12px var(--primary-glow);
         }
 
-        .bridge-fail {
-            background: #dc3545;
-            color: white;
+        /* Forms & Toggles */
+        input[type="text"], input[type="password"] {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--card-border);
+            border-radius: 12px; color: #fff; padding: 10px 14px;
+            font-size: 14px; outline: none; transition: 0.2s;
+        }
+        input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-glow); }
+
+        .btn {
+            background: var(--primary); color: #fff; border: none;
+            border-radius: 14px; padding: 14px; font-size: 15px; font-weight: 700;
+            cursor: pointer; transition: 0.2s; width: 100%;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn:active { transform: scale(0.98); opacity: 0.9; }
+        .btn-primary { background: linear-gradient(135deg, #8b5cf6, #d946ef); }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        .btn-success { background: #10b981; }
+        .btn-danger { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .btn-info { background: #0ea5e9; }
+
+        .annotation-box, .bb-box {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--card-border);
+            border-radius: 14px; color: var(--text); padding: 16px;
+            font-size: 13px; line-height: 1.6;
         }
 
-        .card {
-            background: white;
-            border-radius: var(--radius);
-            margin: 0 16px 16px;
-            padding: 20px;
-            box-shadow: var(--shadow-sm);
-            border: 1px solid white;
+        .info-row { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .info-label { font-size: 12px; color: var(--sub); width: 100px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .info-value { font-size: 14px; color: #fff; font-weight: 500; flex: 1; }
+
+        .search-input-row { display: flex; gap: 8px; margin: 0 16px 16px; }
+        .search-input-row input { flex: 1; }
+        .search-input-row button {
+            background: var(--primary); border: none; border-radius: 12px;
+            color: #fff; padding: 0 20px; font-weight: 700; cursor: pointer;
         }
 
-        .card h3 {
-            font-size: 13px;
-            color: var(--text-sub);
-            font-weight: 700;
-            margin-bottom: 16px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+        /* Results */
+        .search-result-card {
+            background: rgba(255,255,255,0.03); border-radius: 14px;
+            padding: 14px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.05);
+            display: flex; align-items: center; justify-content: space-between;
         }
+        .search-result-title { font-size: 14px; font-weight: 700; color: #fff; }
+        .search-result-btn { background: var(--primary); color: #fff; text-decoration: none; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; }
 
-        .info-row {
-            display: flex;
-            align-items: center;
-            border-bottom: 1px solid var(--bg);
-            padding: 10px 0;
-        }
+        .cover-preview { background: rgba(0,0,0,0.2); padding: 15px; border-radius: 16px; margin-bottom: 15px; }
+        .no-cover { width: 100px; height: 140px; background: rgba(255,255,255,0.05); border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--sub); font-size: 12px; }
 
-        .info-row:last-child {
-            border: none;
-        }
-
-        .info-label {
-            font-size: 13px;
-            color: var(--text-sub);
-            width: 100px;
-            flex-shrink: 0;
-            font-weight: 500;
-        }
-
-        .info-value {
-            font-size: 14px;
-            color: var(--text-main);
-            flex: 1;
-            word-break: break-word;
-            font-weight: 500;
-        }
-
-        .copy-btn {
-            background: none;
-            border: none;
-            font-size: 16px;
-            cursor: pointer;
-            padding: 2px 6px;
-            flex-shrink: 0;
-        }
-
-        .cover-preview {
-            text-align: center;
-            margin-bottom: 12px;
-        }
-
-        .cover-preview img {
-            max-width: 120px;
-            max-height: 180px;
-            border-radius: 6px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, .15);
-        }
-
-        .no-cover {
-            width: 100px;
-            height: 140px;
-            background: #f0f2f5;
-            border-radius: 6px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            color: #aaa;
-            font-size: 12px;
-        }
 
 
         .book-item {
@@ -304,14 +223,14 @@
             padding: 12px 14px;
             border-radius: 12px;
             margin-bottom: 8px;
-            background: white;
+            background: rgba(30, 41, 59, 0.6);
             gap: 12px;
-            border: 1px solid var(--border);
+            border: 1px solid var(--card-border);
             transition: all 0.2s;
         }
 
         .book-item.selected {
-            background: #eff6ff;
+            background: rgba(139, 92, 246, 0.15);
             border-color: var(--primary);
             box-shadow: 0 0 0 1px var(--primary);
         }
@@ -320,10 +239,11 @@
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
             gap: 8px;
-            margin: 0 12px 12px;
+            margin: 0 16px 16px;
             padding: 10px;
-            background: #fff;
-            border-radius: 10px;
+            background: var(--card);
+            border-radius: 16px;
+            border: 1px solid var(--card-border);
         }
 
         .cover-thumb {
@@ -346,19 +266,19 @@
         }
 
         .no-cover-thumb {
-            background: #f0f2f5;
+            background: rgba(255,255,255,0.05);
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 9px;
-            color: #aaa;
+            color: var(--sub);
             text-align: center;
             padding: 4px;
         }
 
         .book-num {
             font-size: 12px;
-            color: #1877f2;
+            color: var(--primary);
             font-weight: 700;
             width: 20px;
             flex-shrink: 0;
@@ -375,41 +295,44 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            color: #fff;
         }
 
         .book-author {
             font-size: 11px;
-            color: #606770;
+            color: var(--sub);
         }
 
         .btn-sm {
-            background: none;
-            border: 1px solid #ccd0d5;
-            border-radius: 4px;
-            padding: 3px 7px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--card-border);
+            color: #fff;
+            border-radius: 6px;
+            padding: 4px 9px;
             font-size: 12px;
             cursor: pointer;
+            transition: background 0.2s;
         }
 
         .btn-sm:active {
-            background: #eee;
+            background: rgba(255,255,255,0.12);
         }
 
         .btn-sm.del {
-            border-color: #dc3545;
-            color: #dc3545;
+            border-color: rgba(239, 68, 68, 0.5);
+            color: #f87171;
         }
 
         .annotation-box {
             max-height: 160px;
             overflow-y: auto;
             font-size: 13px;
-            color: var(--text-main);
+            color: var(--text);
             line-height: 1.6;
-            background: #f1f5f9;
+            background: rgba(15, 23, 42, 0.6);
             border-radius: 12px;
             padding: 16px;
-            border: 1px solid var(--border);
+            border: 1px solid var(--card-border);
         }
 
         .bb-box {
@@ -418,12 +341,12 @@
             font-family: 'JetBrains Mono', 'Fira Code', monospace;
             font-size: 12px;
             padding: 14px;
-            border: 1px solid var(--border);
+            border: 1px solid var(--card-border);
             border-radius: 12px;
             resize: vertical;
-            background: white;
-            color: var(--text-main);
-            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+            background: rgba(15, 23, 42, 0.8);
+            color: #fff;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
         }
 
         button.btn {
@@ -469,12 +392,11 @@
         }
 
         .search-result-card {
-            background: white;
-            padding: 16px;
-            border-radius: var(--radius);
-            margin-bottom: 12px;
-            border: 1px solid var(--border);
-            box-shadow: var(--shadow-sm);
+            background: rgba(30, 41, 59, 0.7);
+            padding: 14px 16px;
+            border-radius: 14px;
+            margin-bottom: 10px;
+            border: 1px solid var(--card-border);
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -488,16 +410,18 @@
 
         /* Auth block */
         .auth-block {
-            background: white;
+            background: var(--card);
+            backdrop-filter: var(--glass);
+            -webkit-backdrop-filter: var(--glass);
             margin: 0 16px 16px;
             border-radius: var(--radius);
             padding: 16px;
             display: flex;
             align-items: center;
             gap: 14px;
-            box-shadow: var(--shadow-sm);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            border: 1px solid var(--card-border);
             border-left: 4px solid #ef4444;
-            /* Not logged in */
         }
 
         .auth-block.auth-ok {
@@ -509,15 +433,16 @@
         }
 
         .auth-icon {
-            font-size: 28px;
+            font-size: 24px;
             flex-shrink: 0;
-            background: var(--bg);
+            background: rgba(255,255,255,0.05);
             width: 48px;
             height: 48px;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 12px;
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.1);
         }
 
         .auth-info {
@@ -528,12 +453,12 @@
         .auth-name {
             font-size: 15px;
             font-weight: 700;
-            color: var(--text-main);
+            color: #fff;
         }
 
         .auth-sub {
             font-size: 12px;
-            color: var(--text-sub);
+            color: var(--sub);
             margin-top: 2px;
             font-weight: 500;
         }
@@ -545,22 +470,23 @@
         }
 
         .btn-auth-login {
-            background: #1877f2;
+            background: var(--primary);
             color: #fff;
             border: none;
-            padding: 7px 14px;
-            border-radius: 6px;
+            padding: 8px 16px;
+            border-radius: 10px;
             font-size: 13px;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
+            box-shadow: 0 4px 12px var(--primary-glow);
         }
 
         .btn-auth-logout {
-            background: #e4e6eb;
-            color: #1c1e21;
-            border: none;
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.15);
             padding: 7px 12px;
-            border-radius: 6px;
+            border-radius: 10px;
             font-size: 13px;
             font-weight: 600;
             cursor: pointer;
@@ -575,30 +501,33 @@
         .search-input-row {
             display: flex;
             gap: 8px;
-            margin: 0 12px 12px;
+            margin: 0 16px 16px;
         }
 
         .search-input-row input {
             flex: 1;
-            padding: 9px 12px;
-            border: 1px solid #ccd0d5;
-            border-radius: 8px;
+            padding: 10px 14px;
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
             font-size: 14px;
+            background: rgba(15, 23, 42, 0.6);
+            color: #fff;
         }
 
         .search-input-row input:focus {
             outline: none;
-            border-color: #1877f2;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-glow);
         }
 
         .search-input-row button {
-            padding: 9px 16px;
+            padding: 10px 18px;
             border: none;
-            border-radius: 8px;
-            background: #1877f2;
+            border-radius: 12px;
+            background: var(--primary);
             color: #fff;
             font-size: 14px;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
         }
 
@@ -610,7 +539,7 @@
 
         .progress {
             height: 4px;
-            background: #e0e0e0;
+            background: rgba(255,255,255,0.1);
             border-radius: 2px;
             overflow: hidden;
             margin: 4px 0;
@@ -618,14 +547,14 @@
 
         .progress-bar {
             height: 100%;
-            background: #1877f2;
+            background: var(--primary);
             width: 0;
             transition: width .3s;
         }
 
         .badge {
             display: inline-block;
-            background: #1877f2;
+            background: var(--primary);
             color: #fff;
             border-radius: 10px;
             font-size: 11px;
@@ -636,23 +565,11 @@
         /* Search Results Styles */
         .search-results-section {
             display: none;
-            margin: 12px;
+            margin: 0 16px;
         }
 
         .search-results-section.show {
             display: block;
-        }
-
-        .search-result-card {
-            background: white;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 8px;
-            border-left: 4px solid #1877f2;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
         }
 
         .search-result-info {
@@ -663,28 +580,45 @@
         .search-result-title {
             font-size: 14px;
             font-weight: 600;
-            color: #1c1e21;
+            color: #fff;
             margin-bottom: 2px;
         }
 
         .search-result-score {
             font-size: 11px;
-            color: #65676b;
+            color: var(--sub);
         }
 
         .search-result-btn {
-            background: #e7f3ff;
-            color: #1877f2;
+            background: rgba(139, 92, 246, 0.15);
+            color: #a5b4fc;
             padding: 6px 12px;
-            border-radius: 6px;
+            border-radius: 8px;
             font-size: 13px;
             font-weight: 600;
             text-decoration: none;
+            border: 1px solid var(--primary-glow);
         }
 
         .search-result-btn:active {
-            background: #dbeaff;
+            background: rgba(139, 92, 246, 0.3);
         }
+
+        /* Info rows inside cards */
+        .info-row { display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .info-label { font-size: 11px; color: var(--sub); width: 90px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .info-value { font-size: 14px; color: #fff; font-weight: 500; flex: 1; }
+
+        .status-pill { display: none; padding: 10px 16px; margin: 0 16px 12px; border-radius: 12px; font-size: 13px; font-weight: 600; }
+        .status-pill.show { display: block; }
+        .status-pill.ok { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3); }
+        .status-pill.err { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+        .status-pill.inf { background: rgba(59, 130, 246, 0.15); color: #93c5fd; border: 1px solid rgba(59,130,246,0.3); }
+
+        .spill { display: none; padding: 10px 16px; margin: 0 16px 12px; border-radius: 12px; font-size: 13px; font-weight: 600; }
+        .spill.ok { display: block; background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3); }
+        .spill.err { display: block; background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+        .spill.inf { display: block; background: rgba(59, 130, 246, 0.15); color: #93c5fd; border: 1px solid rgba(59,130,246,0.3); }
     </style>
 
     <script>
@@ -717,14 +651,14 @@
     <div class="header">
         <div class="header-logo"><img src="logo.png" alt="Logo"></div>
         <div class="header-text">
-            <h1>Парсер книг 2</h1>
+            <h1>Книжная лавка</h1>
             <span>Комбайн для Книгохранилища</span>
         </div>
+        <button class="btn-translate-nav" onclick="AndroidBridge.openTranslator()">🌐 Переводчик</button>
     </div>
-    <div id="bridgeStatus" class="bridge-status bridge-fail" style="display:none">Bridge: Fail</div>
 
     <!-- STATUS -->
-    <div id="status" class="status"></div>
+    <div id="status" class="spill"></div>
 
     <!-- ═══ AUTH BLOCK ═══ -->
     <div id="authBlock" class="auth-block">
@@ -757,14 +691,28 @@
         </div>
 
         <!-- Поле для парсинга по ссылке -->
-        <div class="card" style="margin-top: 12px; background: #fffbe6; border-left: 4px solid #ffc107;">
-            <h3 style="margin-top:0">Или вставьте ссылку на пост 4PDA</h3>
-            <div style="font-size: 12px; color: #666; margin-bottom: 8px;">Извлечет автора раздачи и количество
-                скачиваний из уже опубликованной книги:</div>
-            <div style="display: flex; gap: 8px;">
-                <input type="text" id="postUrlInput" placeholder="https://4pda.to/forum/index.php?showtopic=..."
-                    style="flex: 1; padding: 8px; border: 1px solid #ccd0d5; border-radius: 6px;" />
-                <button class="btn btn-primary" onclick="parsePostUrl()">Разобрать</button>
+        <div class="card" style="margin-top: 12px; border-left: 4px solid #f59e0b;">
+            <h3 style="margin-top:0; color:#fff">Или вставьте ссылку на пост 4PDA</h3>
+            <div style="font-size: 12px; color: var(--sub); margin-bottom: 10px;">Извлечёт данные раздачи (автора, количество скачиваний) и файл книги:</div>
+            <div style="display: flex; gap: 8px; align-items: stretch;">
+                <div style="flex: 1; position: relative;">
+                    <input type="text" id="postUrlInput" placeholder="https://4pda.to/forum/index.php?showtopic=..."
+                        style="width: 100%; padding-right: 36px; box-sizing: border-box;" />
+                    <button onclick="document.getElementById('postUrlInput').value=''"
+                        style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+                               background: none; border: none; font-size: 18px; color: #999; cursor: pointer; line-height:1;">✕</button>
+                </div>
+                <button onclick="parsePostUrl()"
+                    style="flex-shrink:0; padding: 10px 18px; background: linear-gradient(135deg,#8b5cf6,#d946ef);
+                           color:#fff; border:none; border-radius:12px; font-size:14px; font-weight:700;
+                           cursor:pointer; white-space:nowrap;">🔍 Разобрать</button>
+                <div id="parseUrlLoader" style="display:none; font-size:22px; align-self:center; animation: spin 2s linear infinite;">🕒</div>
+            </div>
+
+            <!-- Результат разбора поста -->
+            <div id="parseResultCard" style="display:none; margin-top:14px; padding:14px;
+                background:rgba(139,92,246,0.08); border-radius:14px; border:1px solid rgba(139,92,246,0.3);">
+                <div id="parseResultInfo" style="font-size:13px; color:var(--text); margin-bottom:10px;"></div>
             </div>
         </div>
 
@@ -801,15 +749,15 @@
                 <span class="info-label">Жанр</span>
                 <span class="info-value" id="iGenre">—</span>
             </div>
-            <div class="info-row" id="rowUploader" style="display:none; background:#fffbe6;">
+            <div class="info-row" id="rowUploader" style="display:none;">
                 <span class="info-label">👤 Выложил</span>
                 <span class="info-value" id="iUploader">—</span>
             </div>
-            <div class="info-row" id="rowDownloads" style="display:none; background:#fffbe6;">
+            <div class="info-row" id="rowDownloads" style="display:none;">
                 <span class="info-label">⬇️ Скачиваний</span>
                 <span class="info-value" id="iDownloads">—</span>
             </div>
-            <div class="info-row" id="rowSourceLink" style="display:none; background:#fffbe6;">
+            <div class="info-row" id="rowSourceLink" style="display:none;">
                 <span class="info-label">🔗 Источник</span>
                 <span class="info-value" id="iSourceLink">—</span>
             </div>
@@ -1121,8 +1069,7 @@
             setTimeout(() => {
                 const bs = document.getElementById('bridgeStatus');
                 if (window.AndroidBridge) {
-                    bs.innerText = 'Bridge: OK';
-                    bs.className = 'bridge-status bridge-ok';
+                    if (bs) { bs.innerText = 'Bridge: OK'; bs.className = 'bridge-status bridge-ok'; }
                     // Ask Android for current auth state
                     if (AndroidBridge.getAuthState) {
                         const state = AndroidBridge.getAuthState();
@@ -1134,8 +1081,7 @@
                         }
                     }
                 } else {
-                    bs.innerText = 'Bridge: Fail';
-                    bs.className = 'bridge-status bridge-fail';
+                    if (bs) { bs.innerText = 'Bridge: Fail'; bs.className = 'bridge-status bridge-fail'; }
                 }
             }, 500);
         });
@@ -1319,7 +1265,9 @@
                 uploader: oldUploader,
                 uploaderId: currentBook?.uploaderId || '',
                 downloads: oldDownloads,
-                originalPostUrl: oldUrl
+                originalPostUrl: oldUrl,
+                attachId: '',
+                coverId: ''
             };
         }
 
@@ -1380,7 +1328,11 @@
             // Annotation in spoiler
             if (annot) {
                 currentBook.annotation = Array.from(annot.querySelectorAll('p'))
-                    .map(p => p.textContent.trim()).join('\n\n');
+                    .map(p => p.textContent.trim())
+                    .filter(Boolean)
+                    .join(' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
             }
 
             // Improved Genre Handling
@@ -1493,7 +1445,7 @@
             currentBook.year = yrMatch ? yrMatch[0] : '';
 
             const desc = meta?.querySelector('description');
-            if (desc) currentBook.annotation = desc.textContent.trim();
+            if (desc) currentBook.annotation = desc.textContent.trim().replace(/\s+/g, ' ');
 
             const sm = opfDoc.querySelector('meta[name="calibre:series"]');
             if (sm) {
@@ -1790,11 +1742,20 @@
             }
         }
         function resetAll() {
-            books = []; currentBook = null; updateUI(); document.getElementById('bbArea').value = ''; document.getElementById('infoCard').style.display = 'none'; document.getElementById('annotCard').style.display = 'none'; document.getElementById('seriesCard').style.display = 'none'; document.getElementById('fileInput').value = ''; document.getElementById('searchResultsSection').classList.remove('show'); document.getElementById('searchQueryInput').value = '';
+            books = [];
+            currentBook = null;
+            updateUI();
+            document.getElementById('bbArea').value = '';
+            document.getElementById('infoCard').style.display = 'none';
+            document.getElementById('annotCard').style.display = 'none';
+            document.getElementById('seriesCard').style.display = 'none';
+            document.getElementById('fileInput').value = '';
             document.getElementById('searchResultsSection').classList.remove('show');
             document.getElementById('searchQueryInput').value = '';
             document.getElementById('postUrlInput').value = '';
-            status('Данные очищены', 'inf');
+            const resCard = document.getElementById('parseResultCard');
+            if (resCard) resCard.style.display = 'none';
+            status('✨ Данные очищены', 'inf');
         }
 
         window.onPublishProgress = function (step, msg) {
@@ -1812,18 +1773,22 @@
         function parsePostUrl() {
             const url = document.getElementById('postUrlInput').value.trim();
             if (!url) {
-                status("Введите ссылку на пост!", "err");
+                status('Введите ссылку на пост 4PDA', 'err');
                 return;
             }
-            if (window.AndroidBridge && AndroidBridge.parseForumPost) {
-                status("⏳ Обработка...", "inf");
+            status('Парсинг поста...', 'inf');
+            document.getElementById('parseUrlLoader').style.display = 'block';
+            
+            if (window.AndroidBridge && window.AndroidBridge.parseForumPost) {
                 AndroidBridge.parseForumPost(url);
             } else {
-                status("AndroidBridge недоступен!", "err");
+                status('Парсинг доступен только в приложении', 'err');
+                document.getElementById('parseUrlLoader').style.display = 'none';
             }
         }
 
         window.onPostParsed = function (jsonStr) {
+            document.getElementById('parseUrlLoader').style.display = 'none';
             try {
                 const data = JSON.parse(jsonStr);
                 status("✅ Пост успешно разобран!", "ok");
@@ -1831,9 +1796,18 @@
                 // Накатываем скачивания и автора
                 const applyPostData = () => {
                     if (books.length > 0) {
-                        let author = data.authorName || '';
+                        let author = (data.authorName || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
                         if (data.authorId) {
-                            author = `[url=https://4pda.to/forum/index.php?showuser=${data.authorId}]${author}[/url]`;
+                            const authorUrl = `https://4pda.to/forum/index.php?showuser=${data.authorId}`;
+                            author = `[url=${authorUrl}]${author}[/url]`;
+                        }
+
+                        // Update currentBook if it exists to keep UI in sync
+                        if (currentBook) {
+                            currentBook.downloads = data.totalDownloads || 0;
+                            currentBook.uploader = author;
+                            currentBook.uploaderId = data.authorId || '';
+                            currentBook.originalPostUrl = document.getElementById('postUrlInput').value.trim();
                         }
 
                         books.forEach(b => {
@@ -1841,6 +1815,10 @@
                             b.uploader = author;
                             b.uploaderId = data.authorId || '';
                             b.originalPostUrl = document.getElementById('postUrlInput').value.trim();
+                            // If book title is too short or missing, try to use topic title
+                            if (data.topicTitle && (!b.title || b.title === 'Без названия' || b.title.length < 3)) {
+                                b.title = data.topicTitle;
+                            }
                         });
 
                         updateBookList();
@@ -1848,19 +1826,34 @@
                     }
                 };
 
-                if (data.fileBase64) {
-                    status("⏳ Распаковка файла из поста...", "inf");
-                    // Decode base64 to File
-                    const byteCharacters = atob(data.fileBase64);
+                const processFile = (fileBase64, fileName) => {
+                    const byteCharacters = atob(fileBase64);
                     const byteNumbers = new Array(byteCharacters.length);
                     for (let i = 0; i < byteCharacters.length; i++) {
                         byteNumbers[i] = byteCharacters.charCodeAt(i);
                     }
                     const byteArray = new Uint8Array(byteNumbers);
                     const blob = new Blob([byteArray]);
-                    const file = new File([blob], data.fileName || "downloaded.fb2");
+                    return new File([blob], fileName || "downloaded.fb2");
+                };
 
-                    // Process file
+                if (data.files && data.files.length > 0) {
+                    status(`⏳ Распаковка ${data.files.length} файлов из поста...`, "inf");
+                    const fileObjects = data.files.slice().reverse().map(f => processFile(f.fileBase64, f.fileName));
+                    handleFiles(fileObjects).then((success) => {
+                        applyPostData();
+                        if (success) {
+                            status("✅ Пост и файлы успешно разобраны!", "ok");
+                        }
+                        document.getElementById('section-bbcode').style.display = 'block';
+                        regenerateBB();
+                    }).catch(e => {
+                        status("❌ Ошибка обработки файлов: " + e.message, "err");
+                    });
+                    return;
+                } else if (data.fileBase64) {
+                    status("⏳ Распаковка файла из поста...", "inf");
+                    const file = processFile(data.fileBase64, data.fileName);
                     handleFiles([file]).then((success) => {
                         applyPostData();
                         if (success) {
@@ -1871,7 +1864,7 @@
                     }).catch(e => {
                         status("❌ Ошибка обработки файла: " + e.message, "err");
                     });
-                    return; // Wait for handleFiles to complete
+                    return;
                 } else {
                     if (data.downloadError) {
                         status("❌ Ссылка найдена, но ошибка скачивания: " + data.downloadError, "err");
@@ -1887,7 +1880,9 @@
                     } else {
                         // Иначе инициализируем currentBook
                         if (!currentBook) currentBook = { genres: [] };
-                        currentBook.title = data.topicTitle || currentBook.title;
+                        if (!currentBook.title || currentBook.title === 'Без названия') {
+                            currentBook.title = data.topicTitle || '';
+                        }
                         currentBook.downloads = data.totalDownloads || 0;
                         let author = data.authorName || '';
                         if (data.authorId) {
@@ -1897,7 +1892,7 @@
                         currentBook.uploaderId = data.authorId || '';
                         currentBook.originalPostUrl = document.getElementById('postUrlInput').value.trim();
 
-                        updateInfoPanel();
+                        updateCurrentBookUI();
                     }
 
                     document.getElementById('section-bbcode').style.display = 'block';
@@ -1913,59 +1908,99 @@
             }
         }
 
-        window.onPostParseError = function (errorMsg) {
-            status("❌ Ошибка парсинга: " + errorMsg, "err");
-        }
+        window.onPostParseError = function (error) {
+            document.getElementById('parseUrlLoader').style.display = 'none';
+            status('Ошибка парсинга: ' + error, 'err');
+        };
 
         // ════════════════════════════════════════════════
         //  BB-CODE
         // ════════════════════════════════════════════════
         function regenerateBB() {
-            if (!books.length) { document.getElementById('bbArea').value = ''; return; }
+            // 0. Deduplicate books
+            const uniqueBooks = [];
+            books.forEach(b => {
+                const norm = s => (s || '').toLowerCase().replace(/[._\-—–\s]+/g, ' ').trim();
+                const d = u => norm(u.author) === norm(b.author) && 
+                               norm(u.title) === norm(b.title) && 
+                               norm(u.series) === norm(b.series) && 
+                               norm(u.seriesNum) === norm(b.seriesNum);
+                if (!uniqueBooks.some(d)) uniqueBooks.push(b);
+            });
+
+            actionLog(`regenerateBB: total=${books.length} unique=${uniqueBooks.length}`);
+
+            if (!uniqueBooks.length) { document.getElementById('bbArea').value = ''; return; }
+
+            // 1. Group books by Author + Series
+            const groups = [];
+            uniqueBooks.forEach(b => {
+                const key = (b.author || 'Unknown') + '|' + (b.series || '');
+                let group = groups.find(g => g.key === key);
+                if (!group) {
+                    group = { key, author: b.author, series: b.series, items: [] };
+                    groups.push(group);
+                }
+                group.items.push(b);
+            });
 
             let finalBB = '';
 
-            // Rule: Red Bold Author
-            const b0 = books[0];
-            finalBB += `[COLOR=red][B]${b0.author || 'Неизвестный автор'}[/B][/COLOR]\n`;
+            groups.forEach(g => {
+                // Author (Red)
+                finalBB += `[COLOR=red][B]${g.author || 'Неизвестный автор'}[/B][/COLOR]\n`;
 
-            // Rule: Blue Bold Title/Series
-            let titleLine = '';
-            if (books.length === 1) {
-                titleLine = b0.title || 'Без названия';
-                if (b0.series) titleLine += `. ${b0.series}${b0.seriesNum ? ' ' + b0.seriesNum : ''}`;
-            } else {
-                // If multiple books (series)
-                const seriesName = b0.series || b0.title || 'Серия';
-                const nums = books.map(b => parseInt(b.seriesNum)).filter(n => !isNaN(n)).sort((a, b) => a - b);
-                const range = nums.length > 1 ? ` ${nums[0]}-${nums[nums.length - 1]}` : (nums.length === 1 ? ` ${nums[0]}` : '');
-                titleLine = `${seriesName}. ${seriesName}${range}`;
-            }
-            finalBB += `[B][COLOR=blue]${titleLine}[/COLOR][/B]\n\n`;
+                // Series Heading (Blue)
+                let seriesLine = '';
+                if (g.series) {
+                    const nums = g.items.map(b => parseInt(b.seriesNum)).filter(n => !isNaN(n)).sort((a, b) => a - b);
+                    const range = nums.length > 1 ? ` ${nums[0]}-${nums[nums.length - 1]}` : (nums.length === 1 ? ` ${nums[0]}` : '');
+                    
+                    if (g.items.length === 1) {
+                        const b = g.items[0];
+                        // Если названия книги и серии отличаются (регистронезависимо)
+                        if (b.title && b.series && b.title.toLowerCase().trim() !== b.series.toLowerCase().trim()) {
+                            seriesLine = `${b.title}. ${b.series}${b.seriesNum ? ' ' + b.seriesNum : ''}`;
+                        } else {
+                            // Иначе просто название серии или книги
+                            seriesLine = b.title || b.series || 'Без названия';
+                        }
+                    } else {
+                        seriesLine = `${g.series}${range}`;
+                    }
+                } else {
+                    seriesLine = g.items[0].title || 'Без названия';
+                }
+                finalBB += `[B][COLOR=blue]${seriesLine}[/COLOR][/B]\n\n`;
 
+                // Spoiler start
+                finalBB += `[SPOILER=Аннотация]\n`;
 
-            // Rule: Spoiler Annotation
-            const annotLabel = books.length > 1 ? 'Аннотации' : 'Аннотация';
-            finalBB += `[SPOILER=${annotLabel}]\n`;
-            if (books.length === 1) {
-                finalBB += (b0.annotation || 'Добавить аннотацию').replace(/[\r\n]+/g, ' ');
-            } else {
-                finalBB += books.map((b, idx) => {
-                    const cleanAnnot = (b.annotation || 'Добавить аннотацию').replace(/[\r\n]+/g, ' ');
-                    return `${idx + 1}. [b]${b.title || 'Без названия'}[/b]\n${cleanAnnot}`;
-                }).join('\n\n') + '\n';
-            }
-            finalBB += `\n[/SPOILER]\n\n`;
+                g.items.forEach((b, idx) => {
+                    if (g.items.length > 1) {
+                        let itemTitle = b.title || 'Без названия';
+                        if (b.series) {
+                            // Проверяем, не продублировано ли название серии в названии книги
+                            const seriesTag = b.series.toLowerCase().trim();
+                            const titleLower = itemTitle.toLowerCase();
+                            if (!titleLower.includes(seriesTag)) {
+                                itemTitle = `${b.series}${b.seriesNum ? '-' + b.seriesNum : ''}. ${b.title}`;
+                            }
+                        }
+                        finalBB += `[b]${idx + 1}. ${itemTitle}[/b]\n`;
+                    }
+                    finalBB += `${(b.annotation || 'Добавить аннотацию').trim()}\n`;
+                });
 
-            finalBB += `[url="ссылка на Книгохранилище"][i][b]Скачать из Книгохранилища[/b][/i][/url]`;
+                finalBB += `[/SPOILER]\n\n`;
+                
+                // Classic Footer
+                finalBB += `[url="ссылка на Книгохранилище"][i][b]Скачать из Книгохранилища[/b][/i][/url]\n\n`;
+            });
 
-            document.getElementById('bbArea').value = finalBB;
-
-            // Auto-copy if enabled (placeholder for future preference, but let's do it if bridge is there)
-            if (window.AndroidBridge && books.length > 0) {
-                // AndroidBridge.copyToClipboard(finalBB); // Don't annoy user TOO much unless they ask
-            }
+            document.getElementById('bbArea').value = finalBB.trim();
         }
+
 
         function copyBB() {
             const bb = document.getElementById('bbArea').value;
@@ -1992,6 +2027,14 @@
         async function sendToForum() {
             const bb = document.getElementById('bbArea').value;
             if (!bb) { status('❌ Сначала загрузите книги', 'err'); return; }
+            
+            // Принудительная сортировка по номеру в серии
+            books.sort((a,b) => {
+                const nA = parseInt(a.seriesNum) || 0;
+                const nB = parseInt(b.seriesNum) || 0;
+                return nA - nB;
+            });
+
             if (!authState.loggedIn) {
                 status('❌ Сначала войдите на 4PDA', 'err');
                 openLoginPage();
@@ -2012,18 +2055,58 @@
 
             if (books.length > 0) {
                 const b0 = books[0];
-                const author = b0.author || 'Неизвестный автор';
-                bookData.author = author;
+                const author = (b0.author || 'Неизвестный автор').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+                const authorSearchUrl = `https://4pda.to/forum/index.php?act=search&forums%5B%5D=218&subforums=1&source=all&sort=rel&result=posts&query=${encodeURIComponent(author)}`;
+                
+                // Находим наиболее подходящую серию (если есть разночтения)
+                let seriesName = '';
+                const seriesCounts = {};
+                books.forEach(b => {
+                    if (b.series) {
+                        seriesCounts[b.series] = (seriesCounts[b.series] || 0) + 1;
+                    }
+                });
+                
+                const seriesFound = Object.keys(seriesCounts);
+                if (seriesFound.length > 0) {
+                    // Берем самую частую серию или просто первую найденную
+                    seriesName = seriesFound.sort((a,b) => seriesCounts[b] - seriesCounts[a])[0];
+                }
 
-                // Title with range for multi-books
-                if (books.length > 1) {
-                    const nums = books.map(b => parseInt(b.seriesNum)).filter(n => !isNaN(n)).sort((a, b) => a - b);
-                    const range = nums.length > 1 ? ` ${nums[0]}-${nums[nums.length - 1]}` : (nums.length === 1 ? ` ${nums[0]}` : '');
-                    bookData.title = (b0.title || 'Книга') + range;
-                    bookData.seriesBooks = books.map(b => b.title || 'Без названия').join('\n');
+                bookData.author = author;
+                bookData.authorInfo = author;
+                
+                if (books.length === 1) {
+                    const b = books[0];
+                    if (seriesName) {
+                        // Случай 2: Одна книга в серии
+                        // "Название книги" в формате 'Имя книги. Имя серии номер книги в серии'
+                        const fullTitle = `${b.title}. ${seriesName}${b.seriesNum ? ' ' + b.seriesNum : ''}`;
+                        bookData.title = fullTitle;
+                        topicTitle = `${author} - ${fullTitle}`;
+                        bookData.series = ""; // "Выкладываемые книги серии" не заполняется
+                    } else {
+                        // Случай 1: Одна книга без серии
+                        // "Название книги" заполняет только Название
+                        bookData.title = b.title || 'Без названия';
+                        topicTitle = `${author} - ${bookData.title}`;
+                        bookData.series = ""; // "Выкладываемые книги серии" не заполняется
+                    }
                 } else {
-                    bookData.title = b0.title || 'Без названия';
-                    bookData.seriesBooks = '';
+                    // Случай 3: Несколько книг одной серии
+                    if (seriesName) {
+                        const nums = books.map(b => parseInt(b.seriesNum)).filter(n => !isNaN(n)).sort((a, b) => a - b);
+                        const range = nums.length > 1 ? ` ${nums[0]}-${nums[nums.length - 1]}` : (nums.length === 1 ? ` ${nums[0]}` : '');
+                        // "Название книги" в формате 'Имя серии номера книг в серии'
+                        bookData.title = `${seriesName}${range}`;
+                        topicTitle = `${author} - ${seriesName}${range}`;
+                        // "Выкладываемые книги серии" заполняются названиями книг в порядке возрастания
+                        bookData.series = books.map(b => b.title || 'Без названия').join('\n');
+                    } else {
+                        bookData.title = b0.title || 'Без названия';
+                        topicTitle = `${author} - ${bookData.title}`;
+                        bookData.series = "";
+                    }
                 }
 
                 bookData.genre = [...new Set(books.map(x => x.genre).filter(Boolean))].join(', ');
@@ -2033,7 +2116,7 @@
                 if (books.length > 1) {
                     bookData.annotation = books.map((b, idx) => {
                         const cleanAnnot = (b.annotation || 'Добавить аннотацию').replace(/[\r\n]+/g, ' ');
-                        return `${idx + 1}. [b]${b.title || 'Без названия'}[/b]\n${cleanAnnot}`;
+                        return `[b]${idx + 1}. ${b.title || 'Без названия'}[/b]\n${cleanAnnot}`;
                     }).join('\n\n');
                 } else {
                     bookData.annotation = b0.annotation || '';
@@ -2046,16 +2129,14 @@
                 bookData.pages = b0.pages || '';
                 bookData.webLink = b0.webLink || '';
                 bookData.authors = b0.author || '';
-                // Collect all unique covers for sequential upload
+                // Collect covers sequentially (1.jpg, 2.jpg...)
                 bookData.coverFiles = [];
-                const seenCovers = new Set();
-                books.forEach(b => {
-                    if (b.cover && b.cover.data && !seenCovers.has(b.cover.data)) {
-                        seenCovers.add(b.cover.data);
+                books.forEach((b, idx) => {
+                    if (b.cover && b.cover.data) {
                         bookData.coverFiles.push({
                             data: b.cover.data,
                             mime: b.cover.mime || 'image/jpeg',
-                            name: `cover_${transliterate(b.title || 'book').substring(0, 20)}.jpg`
+                            name: `${idx + 1}.jpg`
                         });
                     }
                 });
@@ -2088,20 +2169,15 @@
 
                         if (window.AndroidBridge && AndroidBridge.stageBookFile) {
                             AndroidBridge.stageBookFile(fileName, zipBase64, 'application/octet-stream');
+                            await new Promise(r => setTimeout(r, 500)); // Increase delay for staging
                         }
                     } catch (err) {
                         console.error('Ошибка упаковки отдельной книги:', err);
                     }
                 }
 
-                if (b0.series) {
-                    const nums = books.map(b => parseInt(b.seriesNum)).filter(n => !isNaN(n)).sort((a, b) => a - b);
-                    const range = nums.length > 1 ? ` ${nums[0]}-${nums[nums.length - 1]}` : (nums.length === 1 ? ` ${nums[0]}` : '');
-                    topicTitle = `${author} - ${b0.series}${range}`;
-                    bookData.series = `${b0.series}${range}`;
-                } else {
-                    topicTitle = `${author} - ${bookData.title}`;
-                }
+                // topicTitle already calculated above in this version
+                bookData.topicTitle = topicTitle;
                 bookData.topicTitle = topicTitle;
             }
 
@@ -2239,16 +2315,40 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
         }
 
         // ════════════════════════════════════════════════
+        function sanitizeFileName(name) {
+            if (!name) return 'book';
+            // Определяем расширение
+            let lo = name.toLowerCase();
+            let isDoubleExt = lo.endsWith('.fb2.zip');
+            let ext = isDoubleExt ? '.fb2.zip' : (name.includes('.') ? name.substring(name.lastIndexOf('.')) : '');
+            let base = isDoubleExt ? name.substring(0, name.length - 8) : (name.includes('.') ? name.substring(0, name.lastIndexOf('.')) : name);
+
+            // Транслитерация базы
+            let cleaned = transliterate(base);
+            
+            // Финальная очистка от точеки тире (уже в transliterate, но для верности)
+            cleaned = cleaned.replace(/[.\-—–\(\)\[\]\{\}\s]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+            
+            return (cleaned || 'book') + ext;
+        }
+
         function makeFilename(b) {
             const p = [];
+            const clean = (s) => (s || '').replace(/[._\-—–\(\)\[\]\{\}\s]+/g, ' ').trim();
+            
+            // ПОРЯДОК: Автор_Серия_Номер_Название
             if (b.author) {
-                const parts = b.author.split(/[\s,]+/);
+                const parts = clean(b.author).split(/[\s,]+/);
                 if (parts.length > 0) p.push(parts[0]);
             }
-            if (b.title) p.push(b.title);
-            if (b.series) p.push(b.series);
-            return (p.join('_') || 'book').substring(0, 150);
+            if (b.series) p.push(clean(b.series));
+            if (b.seriesNum) p.push(clean(b.seriesNum));
+            if (b.title) p.push(clean(b.title));
+            
+            let base = p.join('_').substring(0, 150) || 'book';
+            return transliterate(base);
         }
+
 
         function transliterate(t) {
             const map = {
@@ -2256,7 +2356,7 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
                 'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
             };
             return t.split('').map(c => map[c] !== undefined ? map[c] : c).join('')
-                .replace(/[^\w.\-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+                .replace(/[^\w]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
         }
 
         function copy(field) {
@@ -2265,7 +2365,7 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
             if (field === 'annotation' && books.length > 1) {
                 v = books.map((b, idx) => {
                     const cleanAnnot = (b.annotation || 'Добавить аннотацию').replace(/[\r\n]+/g, ' ');
-                    return `${idx + 1}. [b]${b.title || 'Без названия'}[/b]\n${cleanAnnot}`;
+                    return `[b]${idx + 1}. ${b.title || 'Без названия'}[/b]\n${cleanAnnot}`;
                 }).join('\n\n');
             }
             if (window.AndroidBridge) AndroidBridge.copyToClipboard(v);
@@ -2396,36 +2496,112 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
             }
         }
 
+        function actionLog(msg, type) {
+            const logEl = document.getElementById('actionLog');
+            if (!logEl) return;
+            const time = new Date().toLocaleTimeString('ru-RU', { hour12: false });
+            const div = document.createElement('div');
+            div.style.marginBottom = '6px';
+            div.style.paddingLeft = '4px';
+            div.style.borderLeft = '2px solid transparent';
+            let color = '#f8fafc';
+            if (type === 'err') { color = '#f87171'; div.style.borderLeftColor = '#ef4444'; }
+            if (type === 'ok') { color = '#4ade80'; div.style.borderLeftColor = '#10b981'; }
+            if (type === 'inf') { color = '#60a5fa'; div.style.borderLeftColor = '#3b82f6'; }
+            div.style.color = color;
+            div.innerHTML = `<span style="opacity:0.4; font-size:9px">[${time}]</span> ${esc(msg)}`;
+            logEl.appendChild(div);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
         function status(msg, type) {
             const el = document.getElementById('status');
-            el.textContent = msg;
-            el.className = `status show ${type || 'inf'}`;
-            clearTimeout(el._t);
-            el._t = setTimeout(() => el.classList.remove('show'), 3500);
+            if (el) {
+                el.textContent = msg;
+                el.className = `status show ${type || 'inf'}`;
+                clearTimeout(el._t);
+                el._t = setTimeout(() => el.classList.remove('show'), 3500);
+            }
+            actionLog(msg, type);
+        }
 
-            // Log action
-            const logEl = document.getElementById('actionLog');
-            if (logEl) {
-                const time = new Date().toLocaleTimeString('ru-RU', { hour12: false });
-                const div = document.createElement('div');
-                div.style.marginBottom = '4px';
-                let color = '#333';
-                if (type === 'err') color = '#dc3545';
-                if (type === 'ok') color = '#28a745';
-                div.style.color = color;
-                div.textContent = `[${time}] ${msg}`;
-                logEl.appendChild(div);
-                logEl.scrollTop = logEl.scrollHeight;
+        // ════════════════════════════════════════════════
+        //  PARSE POST URL (4PDA link)
+        // ════════════════════════════════════════════════
+        function parsePostUrl() {
+            const urlInput = document.getElementById('postUrlInput');
+            const url = urlInput ? urlInput.value.trim() : '';
+            if (!url) { status('❌ Введите ссылку на пост 4PDA', 'err'); return; }
+            
+            // Clear existing books to avoid duplicates and mixing old state
+            resetAll();
+            
+            if (!url.includes('4pda')) {
+                status('❌ Ссылка должна быть на пост 4PDA', 'err');
+                return;
+            }
+            const loader = document.getElementById('parseUrlLoader');
+            if (loader) loader.style.display = 'inline-block';
+            status('⏳ Загружаю пост…', 'inf');
+            if (window.AndroidBridge && AndroidBridge.parseForumPost) {
+                AndroidBridge.parseForumPost(url);
+            } else {
+                if (loader) loader.style.display = 'none';
+                status('❌ Функция недоступна в браузере (только в приложении)', 'err');
             }
         }
+
+
+
+        // Open first parsed file in translator
+        function openParsedInTranslator() {
+            const files = window._parsedFiles;
+            if (!files || files.length === 0) { status('❌ Нет файлов для открытия', 'err'); return; }
+            const f = files[0];
+            if (window.AndroidBridge && AndroidBridge.openTranslator) {
+                AndroidBridge.openTranslator(f.fileBase64, f.fileName);
+            } else {
+                status('❌ Функция доступна только в приложении', 'err');
+            }
+        }
+
+        // Parse first file back into the main books list
+        async function parseOnMain() {
+            const files = (window._parsedFiles || []).slice().reverse();
+            if (!files || files.length === 0) { status('❌ Нет файлов для разбора', 'err'); return; }
+            status('⏳ Разбираю книгу…', 'inf');
+            for (const f of files) {
+                try {
+                    // Convert base64 to Blob, then to File
+                    const byteChars = atob(f.fileBase64);
+                    const byteArr = new Uint8Array(byteChars.length);
+                    for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+                    const blob = new Blob([byteArr], { type: 'application/octet-stream' });
+                    const file = new File([blob], f.fileName, { type: 'application/octet-stream' });
+                    await handleFiles([file]);
+                } catch(e) {
+                    status('❌ Ошибка разбора: ' + e.message, 'err');
+                }
+            }
+        }
+
+        // Called by Kotlin if parsing failed
+        window.onPostParseError = function(msg) {
+            const loader = document.getElementById('parseUrlLoader');
+            if (loader) loader.style.display = 'none';
+            const card = document.getElementById('parseResultCard');
+            if (card) card.style.display = 'none';
+            status('❌ Ошибка разбора поста: ' + msg, 'err');
+        };
+
     </script>
 
     <!-- ═══ ЖУРНАЛ ДЕЙСТВИЙ ═══ -->
     <div class="section-header">📜 Журнал действий</div>
-    <div class="card" style="margin-bottom: 40px;">
+    <div class="card" style="margin-bottom: 40px; background: rgba(15, 23, 42, 0.4); border-color: rgba(255,255,255,0.05);">
         <div id="actionLog"
-            style="height: 150px; overflow-y: auto; font-family: monospace; font-size: 11px; background: #f9f9f9; padding: 8px; border: 1px solid #ccd0d5; border-radius: 6px;">
-            <div style="color: #666; font-style: italic;">Система инициализирована...</div>
+            style="height: 160px; overflow-y: auto; font-family: 'Inter', monospace; font-size: 11px; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 12px; line-height: 1.4;">
+            <div style="color: var(--sub); font-style: italic; opacity: 0.5;">Система готова к работе...</div>
         </div>
     </div>
 </body>

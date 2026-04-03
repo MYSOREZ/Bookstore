@@ -207,6 +207,9 @@ class FourPDAWebSocketClient(
         var bookFileUrl: String? = null
         var bookFileName: String? = null
         
+        // List of found book attachments: list of Pair(url, filename)
+        val bookAttachments = mutableListOf<JSONObject>()
+        
         // Helper to extract attachments from a post
         fun extractAttachments(post: JSONArray) {
             val attachments = post.optJSONArray(11)
@@ -224,11 +227,16 @@ class FourPDAWebSocketClient(
                     
                     if (isBookFile) {
                         totalDownloads += attDownloads
-                        if (bookFileUrl == null) {
-                            val encodedName = java.net.URLEncoder.encode(attFilename, "UTF-8").replace("+", "%20")
-                            bookFileUrl = "https://4pda.to/forum/dl/post/$attId/$encodedName"
-                            bookFileName = attFilename
-                            Log.i(TAG, "Found book file in WebSocket attachments: $bookFileUrl")
+                        val encodedName = java.net.URLEncoder.encode(attFilename, "UTF-8").replace("+", "%20")
+                        val url = "https://4pda.to/forum/dl/post/$attId/$encodedName"
+                        
+                        // Avoid duplicates
+                        if (bookAttachments.none { it.getString("url") == url }) {
+                            bookAttachments.add(JSONObject().apply {
+                                put("url", url)
+                                put("name", attFilename)
+                            })
+                            Log.i(TAG, "Found book file in WebSocket attachments: $url")
                         }
                     }
                 }
@@ -238,9 +246,9 @@ class FourPDAWebSocketClient(
         // Extract from the target post
         extractAttachments(targetPost)
         
-        // If no book file found on target post and first post is different, try first post (шапка)
-        if (bookFileUrl == null && firstPost != null && firstPost != targetPost) {
-            Log.i(TAG, "No book file on target post, checking first post (шапка)...")
+        // ONLY try first post (шапка) as fallback IF no book files were found in the target post
+        if (bookAttachments.isEmpty() && firstPost != null && firstPost != targetPost) {
+            Log.i(TAG, "No book files in target post, checking first post (шапка) for attachments...")
             extractAttachments(firstPost)
         }
         
@@ -251,10 +259,10 @@ class FourPDAWebSocketClient(
             put("authorId", authorId)
             put("authorName", authorName)
             put("totalDownloads", totalDownloads)
-            if (bookFileUrl != null) {
-                put("bookFileUrl", bookFileUrl)
-                put("bookFileName", bookFileName)
-            }
+            
+            val filesArray = JSONArray()
+            bookAttachments.forEach { filesArray.put(it) }
+            put("bookAttachments", filesArray)
         }
         return result
     }

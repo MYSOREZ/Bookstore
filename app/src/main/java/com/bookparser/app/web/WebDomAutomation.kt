@@ -80,7 +80,7 @@ class WebDomAutomation(private val webView: WebView) {
                             el.value = v;
                             el.dispatchEvent(new Event('input', { bubbles: true }));
                             el.dispatchEvent(new Event('change', { bubbles: true }));
-                            log.push('OK:' + name);
+                            log.push('OK:' + name + '=[' + v + ']');
                         } else {
                             log.push('MISS:' + name);
                         }

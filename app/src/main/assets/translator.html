@@ -1,0 +1,1595 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Переводчик книг</title>
+<script src="jszip.min.js"></script>
+<script src="pdf.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --primary: #8b5cf6;
+  --primary-dark: #6d28d9;
+  --primary-glow: rgba(139, 92, 246, 0.4);
+  --accent: #f43f5e;
+  --bg: #0f172a;
+  --bg-dots: radial-gradient(#1e293b 1px, transparent 1px);
+  --card: rgba(30, 41, 59, 0.7);
+  --card-border: rgba(255, 255, 255, 0.1);
+  --text: #f8fafc;
+  --sub: #94a3b8;
+  --radius: 20px;
+  --glass: blur(12px);
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  background-image: var(--bg-dots);
+  background-size: 24px 24px;
+  color: var(--text);
+  min-height: 100vh;
+  padding-bottom: 40px;
+  overflow-x: hidden;
+}
+/* Beautiful Header */
+.header {
+  background: linear-gradient(165deg, #4f46e5 0%, #7c3aed 100%);
+  padding: 30px 20px;
+  border-radius: 0 0 32px 32px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3), 0 0 15px var(--primary-glow);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+.header::before {
+  content: ''; position: absolute; top: -50%; left: -20%; width: 200px; height: 200px;
+  background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.header-content { display: flex; align-items: center; gap: 16px; position: relative; z-index: 2;
+}
+.back-btn {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(4px);
+  width: 44px; height: 44px; border-radius: 14px;
+  display: flex; align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255,255,255,0.2); color: #fff; cursor: pointer; font-size: 20px;
+}
+.header h1 { font-size: 22px; font-weight: 800;
+  letter-spacing: -0.5px; }
+.header p { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+
+.sec { padding: 0 16px; }
+.label { font-size: 11px;
+  font-weight: 700; color: #a5b4fc; text-transform: uppercase; letter-spacing: 1.2px; margin: 16px 0 8px 4px;
+}
+
+/* Premium Cards */
+.card {
+  background: var(--card);
+  backdrop-filter: var(--glass);
+  -webkit-backdrop-filter: var(--glass);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  transition: transform 0.2s, border-color 0.2s;
+}
+.card:active { transform: scale(0.99);
+}
+
+/* Engine Row */
+.eng-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.eng-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 16px 12px;
+  text-align: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+.eng-card::after {
+  content: ''; position: absolute; inset: 0;
+  background: var(--primary-g); opacity: 0; transition: opacity 0.3s; z-index: 0;
+}
+.eng-card.sel {
+  border-color: var(--primary);
+  background: rgba(139, 92, 246, 0.1);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
+  transform: translateY(-2px);
+}
+.eng-card > * { position: relative; z-index: 1; }
+.eng-icon { font-size: 28px; margin-bottom: 6px; display: block; }
+.eng-name { font-size: 13px;
+  font-weight: 700; color: #fff; }
+.eng-tag { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 20px; margin-top: 6px;
+}
+.tag-free { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3);
+}
+.tag-key { background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.3);
+}
+.tag-custom { background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3);
+}
+.eng-card .ck { position: absolute; top: 8px; right: 10px; color: var(--primary); font-size: 14px; opacity: 0; }
+.eng-card.sel .ck { opacity: 1;
+}
+
+/* Modern Inputs */
+input.inp, textarea.ta, select.sel-inp {
+  width: 100%; padding: 12px 16px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--card-border);
+  border-radius: 14px; color: #fff;
+  font-size: 14px; outline: none; transition: all 0.2s;
+}
+input.inp:focus, textarea.ta:focus { border-color: var(--primary);
+  box-shadow: 0 0 0 4px var(--primary-glow); background: rgba(15, 23, 42, 0.8); }
+textarea.ta { min-height: 140px; line-height: 1.6;
+}
+select.sel-inp {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 14px center;
+}
+
+/* Auth Tooltip */
+.btn-auth {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; padding: 14px;
+  background: linear-gradient(90deg, #4285f4, #34a853);
+  color: #fff; border: none; border-radius: 14px;
+  font-size: 15px; font-weight: 700; cursor: pointer;
+  margin-top: 12px;
+  box-shadow: 0 4px 15px rgba(66, 133, 244, 0.3);
+}
+.hint { font-size: 12px; color: var(--sub); line-height: 1.6; margin-top: 10px;
+  padding: 0 4px; }
+
+/* Premium Tabs */
+.tabs {
+  display: flex; background: rgba(15,23,42,0.5); padding: 5px; border-radius: 16px; margin-bottom: 20px;
+}
+.tab {
+  flex: 1; padding: 10px; border: none; border-radius: 12px;
+  font-size: 13px; font-weight: 700; color: var(--sub);
+  background: transparent;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.tab.active { background: var(--primary); color: #fff;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3); }
+
+/* Dynamic File Zone */
+.fz {
+  border: 2px dashed rgba(255,255,255,0.1);
+  border-radius: 18px;
+  padding: 30px 20px; text-align: center; transition: all 0.3s;
+  background: rgba(255,255,255,0.02);
+}
+.fz:hover, .fz.drag { border-color: var(--primary);
+  background: rgba(139, 92, 246, 0.05); }
+.fz p { font-size: 13px; color: var(--sub); margin-top: 8px;
+}
+
+/* Pulse Translate Button */
+.btn-tr {
+  width: 100%; padding: 18px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
+  color: #fff;
+  border: none; border-radius: 18px;
+  font-size: 18px; font-weight: 800; cursor: pointer;
+  box-shadow: 0 8px 25px rgba(139, 92, 246, 0.4);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+}
+.btn-tr:active { transform: scale(0.96);
+  box-shadow: 0 4px 10px rgba(139, 92, 246, 0.3); }
+.btn-tr:disabled { opacity: 0.6; filter: grayscale(0.5); cursor: not-allowed;
+}
+
+/* Neon Progress */
+.prog-wrap { margin: 24px 0; display: none; }
+.prog-wrap.show { display: block; animation: fadeIn 0.3s;
+}
+.prog-bg { height: 12px; background: rgba(139, 92, 246, 0.1); border-radius: 10px; overflow: hidden; position: relative; }
+.prog-fill {
+  height: 100%;
+  width: 0; border-radius: 10px;
+  background: linear-gradient(90deg, #8b5cf6, #d946ef, #8b5cf6);
+  background-size: 200% 100%; animation: shimmer 2s linear infinite;
+  box-shadow: 0 0 10px rgba(139,92,246,0.6); transition: width 0.5s cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+@keyframes shimmer { 0% { background-position: 200% 0;
+  } 100% { background-position: -200% 0; } }
+.prog-lbl { font-size: 13px; font-weight: 600; color: #a5b4fc; margin-top: 10px; text-align: center;
+}
+
+/* Status Notifications */
+.spill {
+  display: none; align-items: center; gap: 12px;
+  padding: 14px 18px; border-radius: 16px; margin-bottom: 16px;
+  font-size: 14px; font-weight: 600; animation: slideDown 0.3s;
+}
+.spill.show { display: flex; }
+.spill.info { background: rgba(59, 130, 246, 0.15); color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3); }
+.spill.ok { background: rgba(34, 197, 94, 0.15); color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.3); }
+.spill.err { background: rgba(239, 68, 68, 0.15); color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3); }
+
+/* Glossy Result Card */
+.res-wrap { display: none; animation: slideUp 0.4s;
+}
+.res-wrap.show { display: block; }
+textarea.ta-res {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1.5px solid rgba(139, 92, 246, 0.4);
+  box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1;
+} }
+@keyframes slideDown { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1;
+} }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1;
+} }
+
+/* Toast & Helpers */
+.toast {
+  position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+  background: rgba(139, 92, 246, 0.95); backdrop-filter: blur(8px);
+  color: #fff; padding: 12px 24px; border-radius: 50px;
+  font-size: 14px; font-weight: 700;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+  opacity: 0; transition: all 0.3s; z-index: 9999;
+}
+.toast.show { opacity: 1; bottom: 40px;
+}
+
+.btn-act {
+  padding: 8px 16px; border: none; border-radius: 12px;
+  font-size: 12px; font-weight: 700; cursor: pointer;
+  transition: all 0.2s;
+  display: flex; align-items: center; gap: 6px;
+}
+.btn-copy { background: rgba(59, 130, 246, 0.2); color: #60a5fa;
+}
+.btn-dl { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+.btn-act:hover { filter: brightness(1.2); }
+.btn-act:active { transform: scale(0.95);
+}
+
+/* Gl-Item enhancement */
+.gl-item {
+  background: rgba(255,255,255,0.03); border-radius: 10px;
+  padding: 10px; margin-bottom: 6px; border-bottom: none;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-content">
+    <button class="back-btn" onclick="goBack()">←</button>
+    <div style="flex: 1">
+      <h1>Книжная лавка</h1>
+      <p>Gemini · Google · DeepL · Custom AI · PDF · EPUB</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div id="statusPill" class="spill"></div>
+
+  <div class="label">Движок перевода</div>
+  <div class="eng-row">
+    <div class="eng-card sel" id="e-gemini" onclick="selEng('gemini')">
+      <span class="ck">✓</span><span class="eng-icon">✨</span>
+      <div class="eng-name">Gemini AI</div>
+      <span class="eng-tag tag-key">API-ключ</span>
+    
+    </div>
+    <div class="eng-card" id="e-google" onclick="selEng('google')">
+      <span class="ck">✓</span><span class="eng-icon">G</span>
+      <div class="eng-name">Google Free</div>
+      <span class="eng-tag tag-free">Бесплатно</span>
+    </div>
+    <div class="eng-card" id="e-google_pa" onclick="selEng('google_pa')">
+      <span class="ck">✓</span><span class="eng-icon">🛡️</span>
+      <div class="eng-name">Google PA</div>
+      <span class="eng-tag tag-free">бесплатно в колибри</span>
+    </div>
+    <div class="eng-card" id="e-edge" onclick="selEng('edge')">
+      <span class="ck">✓</span><span class="eng-icon">🟦</span>
+      <div class="eng-name">Edge Free</div>
+      <span class="eng-tag tag-free">Microsoft</span>
+    </div>
+    <div class="eng-card" id="e-custom" onclick="selEng('custom')">
+      <span class="ck">✓</span><span class="eng-icon">🤖</span>
+      <div class="eng-name">Custom AI</div>
+      <span class="eng-tag tag-custom">OpenAI API</span>
+    </div>
+  </div>
+
+  <div id="card-gemini" class="card">
+    <div class="label" style="margin-top:0">Настройки Gemini</div>
+    <div style="display:flex; gap:8px; margin-bottom:12px">
+      <input type="password" id="geminiKey" class="inp" placeholder="API-ключ (AIzaSy…)" style="flex:1" autocomplete="off">
+      <button class="btn-act btn-copy" onclick="toggleVis('geminiKey','btnVis')" id="btnVis">👁</button>
+    </div>
+    <div id="keyStatus" class="key-status"></div>
+    
+    <button class="btn-auth" onclick="doGeminiAuth()">
+      <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#fff" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#fff" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#fff" d="M10.53 28.59c-.48-1.37-.76-2.83-.76-4.59s.27-3.22.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#fff" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.36-8.16 2.36-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      Получить API-ключ Gemini вручную
+    </button>
+    <button class="btn-act btn-copy" style="margin-top:10px; width:100%; justify-content:center; padding:12px; background: rgba(239, 68, 68, 0.1); color: #f87171" onclick="clearKeys()">🗑 Очистить сохраненные ключи</button>
+    
+    <div class="label">Выбор модели</div>
+    <select id="geminiModel" class="sel-inp" onchange="saveState()">
+      <option value="gemini-2.0-flash">gemini-2.0-flash (быстрый, бесплатный)</option>
+      <option value="gemini-2.5-pro-preview-03-25">gemini-2.5-pro (лучшее качество)</option>
+      <option value="gemini-1.5-flash">gemini-1.5-flash (совместимый)</option>
+    </select>
+    
+    <label class="check-row" style="display:flex; align-items:center; gap:10px; margin-top:14px; cursor:pointer">
+      <input type="checkbox" id="useVision" onchange="saveState()" style="width:20px; height:20px; accent-color:var(--primary)">
+      <span style="font-size:13px; font-weight:600; color:#fff">Vision AI (для PDF-сканов / картинок)</span>
+    </label>
+
+    <p class="hint" style="margin-top:12px">Скрапер активен (v5.7). Нажмите кнопку «Получить ключ», зайдите в аккаунт, и ключ будет подхвачен автоматически.</p>
+  </div>
+
+  <div id="card-google_pa" class="card" style="display:none">
+    <div style="font-size:13px;color:var(--text);line-height:1.6">
+      <strong>Google PA (Public API)</strong> — специальный эндпоинт из плагина Calibre.<br>
+      Более устойчив к блокировкам и ошибкам «CaptchaRedirect». Используется фиксированный ключ.
+    </div>
+    <div class="hint">Включен режим имитации браузера Chrome 133.</div>
+  </div>
+
+  <div id="card-edge" class="card" style="display:none">
+    <div style="font-size:13px;color:var(--text);line-height:1.6">
+      <strong>Microsoft Edge (Free)</strong> — использует скрапинг JWT-токена из браузера Edge.<br>
+      Полностью бесплатно, не требует ключей. Лимиты умеренные.
+    </div>
+    <div class="hint">Токен обновляется автоматически каждые 10 минут.</div>
+  </div>
+
+  <div id="card-custom" class="card" style="display:none">
+    <div class="label">Custom AI API (OpenAI-совместимый)</div>
+    <input type="url" id="customUrl" class="inp" placeholder="https://api.openai.com/v1" style="margin-bottom:8px">
+    <input type="password" id="customKey" class="inp" placeholder="API-ключ (sk-…)" style="margin-bottom:8px" autocomplete="off">
+    <input type="text" id="customModel" class="inp" placeholder="Модель (gpt-4o, claude-3-5-sonnet, …)" style="margin-bottom:0">
+    <div class="custom-info">
+      Работает с любым OpenAI-совместимым API:<br>
+      • <strong>OpenAI</strong>: api.openai.com/v1<br>
+      • <strong>Anthropic (Claude)</strong>: api.anthropic.com/v1<br>
+      • <strong>Groq</strong> (бесплатно): api.groq.com/openai/v1<br>
+      • <strong>Together AI</strong>: api.together.xyz/v1<br>
+      • <strong>Ollama</strong> (локально): http://localhost:11434/v1
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="label">Направление перевода</div>
+    <select id="langPair" class="sel-inp" onchange="saveState()">
+      <option value="en|ru">🇬🇧 Английский → 🇷🇺 Русский</option>
+      <option value="ru|en">🇷🇺 Русский → 🇬🇧 Английский</option>
+      <option value="en|de">🇬🇧 Английский → 🇩🇪 Немецкий</option>
+      <option value="en|fr">🇬🇧 Английский → 🇫🇷 Французский</option>
+      <option value="en|es">🇬🇧 Английский → 🇪🇸 Испанский</option>
+      <option value="en|zh">🇬🇧 Английский → 🇨🇳 Китайский</option>
+      <option value="en|ja">🇬🇧 Английский → 🇯🇵 Японский</option>
+      <option value="de|ru">🇩🇪 Немецкий → 🇷🇺 Русский</option>
+      <option value="fr|ru">🇫🇷 Французский → 🇷🇺 Русский</option>
+      <option value="ru|de">🇷🇺 Русский → 🇩🇪 Немецкий</option>
+      <option value="uk|ru">🇺🇦 Украинский → 🇷🇺 Русский</option>
+    </select>
+  </div>
+
+  <div class="card">
+    <div id="panel-file">
+      <div class="fz" id="fileZone" onclick="document.getElementById('fileInput').click()">
+        <div style="font-size:40px; margin-bottom:10px">📖</div>
+        <p><strong>Нажмите для выбора книги</strong></p>
+        <p style="font-size:11px; opacity:0.6">FB2 · EPUB · ZIP · PDF · TXT · MD</p>
+        <input type="file" id="fileInput" accept=".fb2,.epub,.zip,.pdf,.txt,.md" style="display:none" onchange="onFileSelect(event)">
+      </div>
+      
+      <div style="margin-top:16px; display:flex; gap:10px">
+        <button class="btn-act" style="flex:1; background:rgba(239, 68, 68, 0.15); color:#f87171; padding:12px; border:1px solid rgba(239, 68, 68, 0.3)" onclick="clearAll()">🧹 Очистить всё</button>
+      </div>
+      
+      <div id="parseInfo" class="parse-info"></div>
+      <div id="fileChips" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+  <button id="btnTr" class="btn-tr" onclick="startTranslation()">
+    <span id="btnIcon">🚀</span>
+    <span id="btnText">Начать перевод</span>
+  </button>
+
+  <button id="btnStop" onclick="stopTranslation()" style="display:none; width:100%; padding:14px; margin-top:10px;
+    background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+    color:#fff; border:none; border-radius:18px; font-size:16px; font-weight:800; cursor:pointer;
+    box-shadow: 0 8px 25px rgba(239,68,68,0.4); transition: all 0.3s;
+    display:none; align-items:center; justify-content:center; gap:10px;">
+    ⏹ Остановить перевод
+  </button>
+
+  <div id="progWrap" class="prog-wrap">
+    <div class="prog-bg">
+      <div id="progFill" class="prog-fill"></div>
+    </div>
+    <div id="progLbl" class="prog-lbl">Подготовка…</div>
+  </div>
+
+  <div id="resWrap" class="res-wrap">
+    <div class="label">Результат перевода</div>
+    <div class="card" style="padding:10px">
+      <div class="res-head" style="margin-bottom:12px; padding:0 4px">
+        <div class="res-title">✨ Переведено</div>
+        <div class="res-acts">
+          <button class="btn-act btn-copy" onclick="copyRes()">📋 Копировать</button>
+        </div>
+      </div>
+      <textarea id="resText" class="ta ta-res" readonly></textarea>
+      <div id="statsRow" class="stats" style="display:flex; gap:10px; margin-top:8px; font-size:11px; opacity:0.8; flex-wrap:wrap"></div>
+      <div id="dlBookRow" style="display:none; gap:8px; margin-top:12px; flex-wrap:wrap">
+        <button class="btn-act btn-dl" style="flex:1" onclick="dlFb2()">📦 Скачать FB2.ZIP</button>
+        <button class="btn-act btn-dl" style="flex:1; background:rgba(139, 92, 246, 0.2); color:#a5b4fc" onclick="dlEpub()">📘 Скачать EPUB</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="glossaryCard">
+    <div class="label" style="margin-bottom:8px">
+      Глоссарий
+      <span id="glCount" style="background:#ede9fe;color:#5b21b6;border-radius:10px;padding:1px 8px;font-size:10px;margin-left:6px">0</span>
+    </div>
+    <div class="gl-add">
+      <input type="text" id="glFrom" placeholder="Оригинал">
+      <input type="text" id="glTo" placeholder="Перевод">
+      <button class="btn-plus" onclick="addGl()">+</button>
+    </div>
+    <div id="glList" class="gl-list"></div>
+   
+    <div class="hint">Применяется только в Gemini и Custom AI.</div>
+  </div>
+
+</div><div id="toast" class="toast"></div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
+// Force use of worker even in WebView
+pdfjsLib.GlobalWorkerOptions.isEvalAndSliceSupported = true;
+
+let S = {
+  engine:'gemini', geminiKey:'', geminiModel:'gemini-2.0-flash',
+  customUrl:'', customKey:'', customModel:'',
+  langPair:'en|ru', glossary:[],
+  fileContent:'', fileName:'', translating:false, stopRequested:false,
+  useVision:true, blocks:[],
+  bookMeta: { title: '', author: '', cover: '' }
+};
+
+function loadState(){
+  try{
+    const s=JSON.parse(localStorage.getItem('tr_state')||'{}');
+    ['engine','geminiKey','geminiModel','customUrl','customKey','customModel',
+     'langPair','glossary','useVision'].forEach(k=>{ if(s[k]!==undefined) S[k]=s[k]; });
+    if(window.AndroidBridge && window.AndroidBridge.getSetting) {
+        const gk = AndroidBridge.getSetting('gemini_key', '');
+        if(gk) S.geminiKey = gk;
+    }
+  }catch(e){}
+}
+function saveState(){
+  try{
+    const uv = document.getElementById('useVision')?.checked;
+    if(uv !== undefined) S.useVision = uv;
+    
+    localStorage.setItem('tr_state',JSON.stringify({
+      engine:S.engine,geminiKey:S.geminiKey,geminiModel:S.geminiModel,
+      customUrl:S.customUrl,customKey:S.customKey,customModel:S.customModel,
+      langPair:S.langPair,glossary:S.glossary,useVision:S.useVision
+    }));
+    if(window.AndroidBridge && window.AndroidBridge.saveSetting) {
+        AndroidBridge.saveSetting('gemini_key', S.geminiKey || '');
+    }
+  }catch(e){}
+}
+
+function clearKeys() {
+  S.geminiKey = '';
+  S.customKey = '';
+  document.getElementById('geminiKey').value = '';
+  document.getElementById('customKey').value = '';
+  saveState();
+  showToast('✓ Ключи успешно удалены');
+}
+
+window.addEventListener('DOMContentLoaded',()=>{
+  loadState(); applyState();
+});
+
+function applyState(){
+  selEng(S.engine,false);
+  document.getElementById('geminiKey').value=S.geminiKey;
+  document.getElementById('geminiModel').value=S.geminiModel;
+  document.getElementById('customUrl').value=S.customUrl;
+  document.getElementById('customKey').value=S.customKey;
+  document.getElementById('customModel').value=S.customModel;
+  document.getElementById('langPair').value=S.langPair;
+  const uv = document.getElementById('useVision');
+  if(uv) uv.checked = S.useVision;
+  renderGl(); onKeyChange();
+}
+
+// ══ ENGINE ══
+function selEng(eng,save=true){
+  S.engine=eng;
+  document.querySelectorAll('.eng-card').forEach(c=>c.classList.remove('sel'));
+  document.getElementById('e-'+eng).classList.add('sel');
+  ['gemini','google','google_pa','edge','custom'].forEach(e=>{
+    const el = document.getElementById('card-'+e);
+    if (el) el.style.display=e===eng?'block':'none';
+  });
+  document.getElementById('glossaryCard').style.display=
+    (eng==='gemini'||eng==='custom')?'block':'none';
+  if(save) saveState();
+}
+
+// ══ GEMINI KEY ══
+function onKeyChange(){
+  S.geminiKey=document.getElementById('geminiKey').value.trim();
+  const st=document.getElementById('keyStatus');
+  if(!S.geminiKey){st.className='key-status';st.textContent='';return;}
+  if(!S.geminiKey.startsWith('AIza')||S.geminiKey.length<30){
+    st.className='key-status err';st.textContent='⚠ Ключ выглядит неверно';
+  } else {
+    st.className='key-status ok';st.textContent='✓ Ключ сохранён';
+    saveState();
+  }
+}
+
+function toggleVis(inputId,btnId){
+  const inp=document.getElementById(inputId);
+  const btn=document.getElementById(btnId);
+  if(inp.type==='password'){inp.type='text';btn.textContent='🙈';}
+  else{inp.type='password';btn.textContent='👁';}
+}
+
+// ══ GEMINI AUTH ══
+function doGeminiAuth(){
+  openExt('https://aistudio.google.com/app/apikey');
+  showToast('Создайте ключ, скопируйте его и вставьте в поле выше');
+}
+
+window.onGeminiKeyReceived=function(key){
+  if(!key) return;
+  S.geminiKey=key;
+  document.getElementById('geminiKey').value=key;
+  saveState();
+  onKeyChange();
+  selEng('gemini');
+  showStatus('✓ Ключ Gemini получен автоматически!','ok');
+  showToast('✓ Ключ Gemini сохранён');
+};
+
+async function testKey(){
+  if(!S.geminiKey){showStatus('Введите ключ','err');return;}
+  showStatus('Проверка ключа…','info');
+  const url=`https://generativelanguage.googleapis.com/v1beta/models?key=${S.geminiKey}`;
+  callNative(url, 'GET', '', {}, (res, err) => {
+    if (err) {
+      showStatus('✗ ' + err, 'err');
+    } else {
+      try {
+        const d = JSON.parse(res);
+        if (d.models) showStatus('✓ Ключ работает!', 'ok');
+        else showStatus('✗ ' + (d.error?.message || 'Ошибка'), 'err');
+      } catch(e) {
+        showStatus('✓ Ключ работает (HTTP OK)', 'ok');
+  
+      }
+    }
+  });
+}
+
+function callNative(url, method, body, headers, cb) {
+  if (window.AndroidBridge && window.AndroidBridge.logFromJs) {
+    AndroidBridge.logFromJs("JS: callNative -> " + url.substring(0, 80));
+  }
+  if (window.AndroidBridge && window.AndroidBridge.nativeRequest) {
+    const id = 'cb_' + Math.random().toString(36).substring(7);
+    const timeout = setTimeout(() => {
+      if (window[id]) {
+        if (window.AndroidBridge.logFromJs) window.AndroidBridge.logFromJs("JS: nativeRequest TIMEOUT -> " + url.substring(0, 50));
+        delete window[id];
+        cb(null, 'Network Timeout (60s)');
+      }
+    }, 60000);
+    window[id] = (res, err) => {
+      clearTimeout(timeout);
+      if (!window[id]) return;
+      delete window[id];
+      if (err) {
+        if (window.AndroidBridge && window.AndroidBridge.logFromJs) window.AndroidBridge.logFromJs("JS: nativeRequest ERR -> " + err);
+        cb(null, err);
+      } else {
+        cb(res, null);
+      }
+    };
+    const hJson = JSON.stringify(headers || {});
+    AndroidBridge.nativeRequest(url, method, body, hJson, id);
+  } else {
+    fetch(url, {method, body: body || undefined, headers})
+      .then(r => r.text().then(t => cb(t, r.ok ? null : 'HTTP ' + r.status)))
+      .catch(e => cb(null, e.message));
+  }
+}
+window.onNativeResponse = function(id, b64Err, b64Res) {
+  const decode = (b) => {
+    if(!b) return null;
+    try {
+      return decodeURIComponent(escape(atob(b)));
+    } catch(e) {
+      try { return atob(b); } catch(e2) { return b; }
+    }
+  };
+  if (window[id]) window[id](decode(b64Res), decode(b64Err));
+};
+
+window.onFileLoaded = async function(base64, name) {
+  if (window.AndroidBridge && window.AndroidBridge.logFromJs) {
+    AndroidBridge.logFromJs("JS: onFileLoaded -> " + name);
+  }
+  try {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const blob = new Blob([new Uint8Array(byteNumbers)]);
+    const file = new File([blob], name);
+    await onFileSelect({ target: { files: [file] } });
+  } catch(e) {
+    showStatus("Ошибка загрузки файла из моста: " + e.message, "err");
+  }
+};
+
+async function onFileSelect(e){
+  const file=e.target.files[0];
+  if(!file) return;
+  try {
+    const lo = file.name.toLowerCase();
+    S.fileName = file.name;
+    // Initialize metadata with defaults based on filename
+    S.bookMeta = { title: file.name.replace(/\.[^/.]+$/, ""), author: 'Unknown' };
+    
+    if (lo.endsWith('.pdf')) {
+      await parsePdf(file);
+    } else {
+      let txt = '';
+      if (lo.endsWith('.fb2')) txt = parseFb2Text(await file.text());
+      else if (lo.endsWith('.epub')) txt = await parseEpub(file);
+      else if (lo.endsWith('.zip')) txt = await parseFb2Zip(file);
+      else txt = await file.text();
+      S.fileContent = txt;
+      // If parser didn't create blocks, create a default one
+      if (!S.blocks || S.blocks.length === 0) {
+          S.blocks = [{type: 'text', content: txt}];
+      }
+    }
+    
+    document.getElementById('parseInfo').innerHTML = `
+      <div style="margin-top:10px; padding:12px; background:rgba(139,92,246,0.1); border-radius:12px; border:1px solid var(--primary-glow)">
+        <div style="font-weight:700; color:#fff">${esc(S.bookMeta.title || file.name)}</div>
+        <div style="font-size:12px; color:var(--sub)">${esc(S.bookMeta.author || 'Автор не указан')} · ${S.blocks.length} блоков</div>
+      </div>
+    `;
+    document.getElementById('dlBookRow').style.display = 'flex';
+    renderChips();
+    if (S.bookMeta.cover) {
+      const info = document.getElementById('parseInfo');
+      const img = document.createElement('img');
+      img.src = 'data:image/jpeg;base64,' + S.bookMeta.cover;
+      img.style.width = '80px'; img.style.borderRadius = '8px'; img.style.marginTop = '8px';
+      img.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+      info.appendChild(document.createElement('br'));
+      info.appendChild(img);
+    }
+    showStatus('✓ Файл готов к переводу', 'ok');
+  } catch (err) {
+    showStatus('Ошибка загрузки: '+err.message, 'err');
+  }
+}
+
+// ── FB2 PARSER ──
+function parseFb2Text(xml){
+  const doc=new DOMParser().parseFromString(xml,'text/xml');
+  const ns='http://www.gribuser.ru/xml/fictionbook/2.0';
+  
+  // Extract Metadata
+  const titleInfo = doc.querySelector('title-info');
+  if (titleInfo) {
+    const t = titleInfo.querySelector('book-title')?.textContent;
+    if (t) S.bookMeta.title = t.trim();
+    
+    const aut = titleInfo.querySelector('author');
+    if (aut) {
+      const f = aut.querySelector('first-name')?.textContent || '';
+      const l = aut.querySelector('last-name')?.textContent || '';
+      if (f || l) S.bookMeta.author = (f + ' ' + l).trim();
+    }
+    
+    // Extract Cover
+    const cp = titleInfo.querySelector('coverpage');
+    if (cp) {
+      const img = cp.querySelector('image');
+      let href = img?.getAttribute('l:href') || img?.getAttribute('xlink:href');
+      if (href) {
+        if (href.startsWith('#')) href = href.substring(1);
+        const bin = doc.getElementById(href) || doc.querySelector(`binary[id="${href}"]`);
+        if (bin) S.bookMeta.cover = bin.textContent.trim().replace(/\s/g, '');
+      }
+    }
+  }
+
+  let bodies=doc.getElementsByTagNameNS(ns,'body');
+  if(!bodies.length) bodies=doc.getElementsByTagName('body');
+  
+  const parts=[];
+  for(const body of bodies){
+    const paras=body.querySelectorAll?body.querySelectorAll('p,title,subtitle,empty-line'):[];
+    if(paras.length){
+      for(const p of paras){
+        const t=p.textContent.trim();
+        if(t) parts.push(t);
+        else parts.push('');
+      }
+    } else {
+      const t=body.textContent.trim();
+      if(t) parts.push(t);
+    }
+  }
+  if(!parts.length){
+    return xml.replace(/<[^>]+>/g,' ').replace(/\s{3,}/g,'\n\n').trim();
+  }
+  return parts.join('\n\n');
+}
+
+// ── FB2.ZIP PARSER ──
+async function parseFb2Zip(file){
+  const zip=await JSZip.loadAsync(file);
+  for(const fname of Object.keys(zip.files)){
+    if(fname.toLowerCase().endsWith('.fb2')){
+      const xml=await zip.files[fname].async('text');
+      return parseFb2Text(xml);
+    }
+  }
+  throw new Error('FB2 файл не найден внутри ZIP');
+}
+
+// ── EPUB PARSER ──
+async function parseEpub(file){
+  const zip=await JSZip.loadAsync(file);
+  const containerXml=await zip.file('META-INF/container.xml')?.async('text');
+  if(!containerXml) throw new Error('EPUB: container.xml не найден');
+  const cDoc=new DOMParser().parseFromString(containerXml,'text/xml');
+  const opfPath=cDoc.querySelector('rootfile')?.getAttribute('full-path');
+  if(!opfPath) throw new Error('EPUB: OPF путь не найден');
+  const opfDir=opfPath.split('/').slice(0,-1).join('/');
+  const opfXml=await zip.file(opfPath)?.async('text');
+  if(!opfXml) throw new Error('EPUB: OPF не найден');
+  const opfDoc=new DOMParser().parseFromString(opfXml,'text/xml');
+  const manifest={};
+  for(const item of opfDoc.querySelectorAll('manifest item')){
+    manifest[item.getAttribute('id')]={
+      href:item.getAttribute('href'),
+      type:item.getAttribute('media-type')
+    };
+  }
+  const spineIds=[...opfDoc.querySelectorAll('spine itemref')].map(i=>i.getAttribute('idref'));
+  const chapters=[];
+  for(const id of spineIds){
+    const item=manifest[id];
+    if(!item||(item.type&&!item.type.includes('html')&&!item.type.includes('xhtml'))) continue;
+    const chPath=opfDir?(opfDir+'/'+item.href):item.href;
+    const html=await zip.file(chPath)?.async('text');
+    if(!html) continue;
+    const hDoc=new DOMParser().parseFromString(html,'text/html');
+    hDoc.querySelectorAll('script,style').forEach(n=>n.remove());
+    const txt=hDoc.body?.innerText||hDoc.body?.textContent||'';
+    if(txt.trim()) chapters.push(txt.trim());
+  }
+  
+  // Extract Cover
+  try {
+    const coverItem = opfDoc.querySelector('meta[name="cover"]');
+    let coverId = coverItem?.getAttribute('content');
+    let coverHref = '';
+    if (coverId) {
+        coverHref = manifest[coverId]?.href;
+    } else {
+        // Fallback: look for item with "cover" in ID or href
+        const fallback = Object.keys(manifest).find(k => k.toLowerCase().includes('cover') || manifest[k].href.toLowerCase().includes('cover'));
+        if (fallback) coverHref = manifest[fallback].href;
+    }
+    
+    if (coverHref) {
+        const coverPath = opfDir ? (opfDir + '/' + coverHref) : coverHref;
+        const coverFile = zip.file(coverPath);
+        if (coverFile) {
+            const blob = await coverFile.async('base64');
+            S.bookMeta.cover = blob;
+        }
+    }
+  } catch(e) { console.warn("Epub Cover Extract Error", e); }
+  
+  if(!chapters.length) throw new Error('EPUB: не удалось извлечь текст');
+  return chapters.join('\n\n---\n\n');
+}
+
+
+
+function renderChips(){
+  document.getElementById('fileChips').innerHTML=S.fileName
+    ?`<div class="chip">📚 ${esc(S.fileName)} <button onclick="clearFile()">✕</button></div>`:'';
+}
+function clearFile(){
+  S.fileContent='';S.fileName='';S.blocks=[];S.translating=false;
+  document.getElementById('fileInput').value='';
+  document.getElementById('fileChips').innerHTML='';
+  document.getElementById('parseInfo').innerHTML='';
+  document.getElementById('parseInfo').className='parse-info';
+  document.getElementById('dlBookRow').style.display='none';
+  showStatus('','');
+}
+
+function clearAll(){
+  if(S.translating && !confirm('Перевод в процессе. Прервать и очистить?')) return;
+
+  // Stop any running translation
+  S.stopRequested = true;
+  S.translating = false;
+
+  // Clear file state
+  S.fileContent = '';
+  S.fileName = '';
+  S.blocks = [];
+  S.bookMeta = { title:'', author:'', cover:'' };
+  window._parsedFiles = null;
+  window._trResults = [];
+
+  // Reset file input
+  const fi = document.getElementById('fileInput');
+  if(fi) fi.value = '';
+
+  // Reset file zone appearance
+  const fz = document.getElementById('fileZone');
+  if(fz) fz.innerHTML = `
+    <div style="font-size:40px; margin-bottom:10px">📖</div>
+    <p><strong>Нажмите для выбора книги</strong></p>
+    <p style="font-size:11px; opacity:0.6">FB2 · EPUB · ZIP · PDF · TXT · MD</p>
+    <input type="file" id="fileInput" accept=".fb2,.epub,.zip,.pdf,.txt,.md" style="display:none" onchange="onFileSelect(event)">
+  `;
+  // Re-attach click handler after innerHTML reset
+  if(fz) fz.onclick = () => document.getElementById('fileInput').click();
+
+  // Clear UI panels
+  const pi = document.getElementById('parseInfo');
+  if(pi) pi.innerHTML = '';
+  const fc = document.getElementById('fileChips');
+  if(fc) fc.innerHTML = '';
+  const rt = document.getElementById('resText');
+  if(rt) rt.value = '';
+  const sr = document.getElementById('statsRow');
+  if(sr) sr.innerHTML = '';
+  const dlRow = document.getElementById('dlBookRow');
+  if(dlRow) dlRow.style.display = 'none';
+
+  document.getElementById('resWrap').classList.remove('show');
+  document.getElementById('progWrap').classList.remove('show');
+  setUI(false);
+  showToast('🧹 Всё очищено');
+}
+
+const fz=document.getElementById('fileZone');
+['dragover','dragenter'].forEach(ev=>fz.addEventListener(ev,e=>{e.preventDefault();fz.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>fz.addEventListener(ev,()=>fz.classList.remove('drag')));
+fz.addEventListener('drop',async ev=>{
+  ev.preventDefault();
+  const file=ev.dataTransfer.files[0];
+  if(file) await onFileSelect({target:{files:[file]}});
+});
+
+// ══ GLOSSARY ══
+function addGl(){
+  const f=document.getElementById('glFrom').value.trim();
+  const t=document.getElementById('glTo').value.trim();
+  if(!f||t){showToast('Заполните оба поля');return;}
+  if(S.glossary.some(g=>g.from.toLowerCase()===f.toLowerCase())){showToast('Уже есть');return;}
+  S.glossary.push({from:f,to:t});
+  document.getElementById('glFrom').value='';
+  document.getElementById('glTo').value='';
+  renderGl(); saveState();
+}
+function rmGl(i){S.glossary.splice(i,1);renderGl();saveState();}
+function renderGl(){
+  const cnt=S.glossary.length;
+  document.getElementById('glCount').textContent=cnt;
+  document.getElementById('glList').innerHTML=S.glossary.map((g,i)=>`
+    <div class="gl-item">
+      <span style="flex:1;font-size:13px;font-weight:600">${esc(g.from)}</span>
+      <span style="color:var(--sub);font-size:12px">→</span>
+      <span style="flex:1;font-size:13px;color:#5b21b6">${esc(g.to)}</span>
+      <button onclick="rmGl(${i})" style="background:none;border:none;cursor:pointer;color:#aaa;font-size:16px">✕</button>
+    </div>`).join('')||'<div style="font-size:12px;color:var(--sub);padding:4px">Пусто</div>';
+}
+
+// ══ TRANSLATION ══
+async function startTranslation(){
+  if(S.translating) return;
+  if(!S.blocks || S.blocks.length === 0){showStatus('Загрузите файл книги для перевода','err');return;}
+
+  S.geminiKey=document.getElementById('geminiKey').value.trim();
+  S.customUrl=document.getElementById('customUrl').value.trim();
+  S.customKey=document.getElementById('customKey').value.trim();
+  S.customModel=document.getElementById('customModel').value.trim();
+  S.geminiModel=document.getElementById('geminiModel').value;
+  S.langPair=document.getElementById('langPair').value;
+
+  if(S.engine==='gemini'&&!S.geminiKey){showStatus('Введите API-ключ Gemini или получите его вручную','err');return;}
+  if(S.engine==='custom'){
+    if(!S.customUrl){showStatus('Введите URL Custom API','err');return;}
+    if(!S.customModel){showStatus('Введите название модели','err');return;}
+  }
+
+  S.translating=true;
+  S.stopRequested=false;
+  setUI(true);
+  document.getElementById('resWrap').classList.remove('show');
+  showStatus('','');
+
+  try{
+    const result=await translate();
+    const origText = S.blocks.map(b => b.content || '').join('\n');
+    if (S.stopRequested) {
+      const partialResult = (window._trResults || []).join('\n\n');
+      showStatus('⏹ Перевод остановлен. Показаны частичные результаты.','info');
+      showResult(partialResult, origText, true);
+    } else {
+      showResult(result, origText);
+    }
+  }catch(err){
+    const partialResult = (window._trResults || []).join('\n\n');
+    const origText = S.blocks.map(b => b.content || '').join('\n');
+    if (S.stopRequested) {
+      showStatus('⏹ Перевод остановлен. Показаны частичные результаты.','info');
+    } else {
+      showStatus('Ошибка ('+err.message+'). Показаны частичные результаты.','err');
+    }
+    showResult(partialResult, origText, true);
+  }finally{
+    S.translating=false;
+    S.stopRequested=false;
+    setUI(false);
+  }
+}
+
+function stopTranslation(){
+  if(!S.translating) return;
+  S.stopRequested=true;
+  showStatus('⏹ Остановка после текущего блока…','info');
+  const btn=document.getElementById('btnStop');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Останавливаю…'; }
+}
+
+async function translate(){
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const MAX={gemini:28000,mymemory:400,custom:28000,google_pa:3000}[S.engine]||5000;
+  let blocks = S.blocks;
+  const results=[];
+  window._trResults = [];
+  // Расчет общего кол-ва чанков для прогресса
+  let totalChunks = 0;
+  for(let b of blocks) {
+    if(b.type==='image') totalChunks++;
+    else totalChunks += (splitChunks(b.content, MAX) || []).length;
+  }
+  
+  let done = 0;
+  let blocksSinceLongPause = 0;
+
+  for(let i=0;i<blocks.length;i++){
+    const b = blocks[i];
+    if(b.type==='image'){
+       setProgress((done/totalChunks)*90, `Стр. ${i+1}/${blocks.length} (Изображение)…`);
+       if(S.engine==='gemini' || S.engine==='custom'){
+          try {
+              const trImage = S.engine==='gemini'?
+              await trGeminiImage(b) : await trCustomImage(b);
+              const r = `\n\n![${b.name}](image)\n\n${trImage}\n\n`;
+              results.push(r); window._trResults.push(r);
+          } catch(err) {
+              const r = `\n\n![${b.name}](image)\n\n*[Ошибка перевода: ${err.message}]*\n\n`;
+              results.push(r); window._trResults.push(r);
+          }
+       } else {
+          const r = `\n\n![${b.name}](image)\n\n*[Пропущено: движок не поддерживает Vision]*\n\n`;
+          results.push(r); window._trResults.push(r);
+       }
+       done++;
+       blocksSinceLongPause++;
+    } else {
+       const chunks = splitChunks(b.content, MAX);
+       for(let j=0;j<chunks.length;j++){
+           const statusText = `Текст ${done+1}/${totalChunks}…`;
+           setProgress((done/totalChunks)*90, statusText);
+           if (window.AndroidBridge && window.AndroidBridge.logFromJs) {
+             window.AndroidBridge.logFromJs(`JS: ${statusText}`);
+           }
+           
+           // Check stop flag before each chunk
+           if (S.stopRequested) {
+             window._trResults = results;
+             return results.join('\n\n');
+           }
+
+           try {
+             let res = "";
+             switch(S.engine){
+               case 'gemini':   res = await trGemini(chunks[j]); break;
+               case 'google':   res = await trGoogle(chunks[j]); break;
+               case 'google_pa': res = await trGooglePA(chunks[j]); break;
+               case 'custom':   res = await trCustom(chunks[j]); break;
+             }
+             results.push(res);
+           } catch(e) {
+             if (window.AndroidBridge && window.AndroidBridge.logFromJs) {
+               window.AndroidBridge.logFromJs(`JS: Ошибка на блоке ${done+1}: ${e.message}`);
+             }
+             if (S.stopRequested) { window._trResults = results; return results.join('\n\n'); }
+             throw e;
+           }
+           done++;
+           blocksSinceLongPause++;
+
+           if(done < totalChunks) {
+             // Anti-Ban Cooldown
+              if ((S.engine === 'google' || S.engine === 'google_pa') && blocksSinceLongPause >= 50) {
+                 const cooldown = 15000 + Math.random() * 5000;
+                 setProgress((done/totalChunks)*90, `Пауза (Anti-Ban) ${Math.round(cooldown/1000)}с…`);
+                 await sleep(cooldown);
+                 blocksSinceLongPause = 0;
+             } else {
+                  const ms = (S.engine.startsWith('google')) ?
+                  (1500 + Math.random() * 2000) : 400;
+                 await sleep(ms);
+             }
+           }
+       }
+    }
+  }
+  setProgress(100,'Готово!');
+  window._trResults = results;
+  return results.join('\n\n');
+}
+
+// ── GEMINI ──
+function trGemini(text) {
+  return new Promise((resolve, reject) => {
+    const [src, dst] = S.langPair.split('|');
+    const names = {en:'английский', ru:'русский', de:'немецкий', fr:'французский', es:'испанский', zh:'китайский', ja:'японский', uk:'украинский'};
+    let prompt = getSystemPrompt(names, dst, false) + `ТЕКСТ:\n${text}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${S.geminiModel}:generateContent?key=${S.geminiKey}`;
+    const body = JSON.stringify({
+      contents:[{parts:[{text:prompt}]}], 
+      generationConfig:{temperature:0.3, maxOutputTokens:8192},
+      safetySettings: [
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+      ]
+    });
+
+    callNative(url, 'POST', body, {}, (res, err) => {
+      if (err) return reject(new Error(err));
+      try {
+      
+        const data = JSON.parse(res);
+        if(data.error) return reject(new Error(data.error.message || 'Gemini API Error'));
+        const t = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!t) reject(new Error('Gemini вернул пустой ответ'));
+        else resolve(t.trim());
+      } catch(e) { reject(new Error('Ошибка парсинга ответа Gemini')); }
+    });
+  });
+}
+
+function trGeminiImage(block) {
+  return new Promise((resolve, reject) => {
+    const [src, dst] = S.langPair.split('|');
+    const names = {en:'английский', ru:'русский', de:'немецкий', fr:'французский', es:'испанский', zh:'китайский', ja:'японский', uk:'украинский'};
+    let prompt = getSystemPrompt(names, dst, true);
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${S.geminiModel}:generateContent?key=${S.geminiKey}`;
+    const body = JSON.stringify({
+      contents:[{parts:[{text:prompt}, {inlineData:{mimeType:"image/jpeg", data:block.b64}}]}], 
+      generationConfig:{temperature:0.3, maxOutputTokens:8192},
+      safetySettings: [
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+      ]
+    });
+
+    callNative(url, 'POST', body, {}, (res, err) => {
+      if (err) return reject(new Error(err));
+      try {
+        const data = JSON.parse(res);
+   
+        const t = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!t) reject(new Error('Gemini вернул пустой ответ'));
+        else resolve(t.trim());
+      } catch(e) { reject(new Error('Ошибка парсинга ответа Gemini (Image)'));
+      }
+    });
+  });
+}
+
+// ── MYMEMORY ──
+// ── GOOGLE FREE ──
+function trGoogle(text) {
+  return new Promise((resolve, reject) => {
+    const [src, dst] = S.langPair.split('|');
+    // Используем 'gtx' (Google Translate eXtension) — самый стабильный клиент из Calibre
+    // Google Free (gtx) не требует ключа. Ключ API вызывает ошибку 400.
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${dst}&dt=t&dt=bd&dt=at&dt=ss&dt=ld&dt=qca`;
+    const body = `q=${encodeURIComponent(text)}`;
+    
+    callNative(url, 'POST', body, {'Content-Type':'application/x-www-form-urlencoded'}, (res, err) => {
+      if (err) return reject(new Error(err));
+      try {
+       
+        const raw = (res || "").trim();
+        if (raw.startsWith('<!DOCTYPE') || raw.includes('<html') || raw.includes('CaptchaRedirect')) {
+          throw new Error('Google требует проверку (CAPTCHA). Перейдите на Gemini.');
+        }
+        const data = JSON.parse(raw);
+        if(!Array.isArray(data) || !data[0]) throw new Error('Некорректная структура ответа');
+        let t = '';
+        data[0].forEach(p => { if(p[0]) t += p[0];
+        });
+        if (!t) throw new Error('Пустой ответ от Google');
+        resolve(t.trim());
+      } catch(e) { 
+        const excerpt = (res || "").slice(0, 150).replace(/\n/g, ' ');
+        if (window.AndroidBridge && window.AndroidBridge.logFromJs) {
+          window.AndroidBridge.logFromJs("Google Parse ERR: " + e.message + " | Content: " + excerpt);
+        }
+        reject(new Error(e.message.includes('CAPTCHA') ? e.message : 'Ошибка Google Translate. Попробуйте Gemini.'));
+      }
+    });
+  });
+}
+
+// ── CUSTOM AI (OpenAI-compatible) ──
+async function trCustom(text){
+  const [src,dst]=S.langPair.split('|');
+  const names={en:'английский',ru:'русский',de:'немецкий',fr:'французский',es:'испанский',zh:'китайский',ja:'японский',uk:'украинский'};
+  let sysMsg = getSystemPrompt(names, dst, false);
+  const base=S.customUrl.replace(/\/$/, '');
+  const headers={'Content-Type':'application/json'};
+  if(S.customKey) headers['Authorization']=`Bearer ${S.customKey}`;
+  const r=await fetch(`${base}/chat/completions`,{
+    method:'POST', headers,
+    body:JSON.stringify({model:S.customModel,messages:[
+      {role:'system',content:sysMsg},
+      {role:'user',content:text}
+    ],temperature:0.3})
+  });
+  if(!r.ok){const e=await r.text();throw new Error(`Custom API HTTP ${r.status}: ${e.slice(0,200)}`);}
+  const data=await r.json();
+  const t=data.choices?.[0]?.message?.content;
+  if(!t) throw new Error('Custom API вернул пустой ответ');
+  return t.trim();
+}
+
+async function trCustomImage(block){
+  const [src,dst]=S.langPair.split('|');
+  const names={en:'английский',ru:'русский',de:'немецкий',fr:'французский',es:'испанский',zh:'китайский',ja:'японский',uk:'украинский'};
+  let sysMsg = getSystemPrompt(names, dst, true);
+  const base=S.customUrl.replace(/\/$/, '');
+  const headers={'Content-Type':'application/json'};
+  if(S.customKey) headers['Authorization']=`Bearer ${S.customKey}`;
+  const r=await fetch(`${base}/chat/completions`,{
+    method:'POST', headers,
+    body:JSON.stringify({model:S.customModel,messages:[
+      {role:'system',content:sysMsg},
+      {role:'user',content:[
+        {type:"text", text:"Переведи диаграмму / схему / скриншот на основе текста."},
+        {type:"image_url", image_url:{url:`data:image/jpeg;base64,${block.b64}`}}
+      ]}
+    ],temperature:0.3})
+  });
+  if(!r.ok){const e=await r.text();throw new Error(`Custom API HTTP ${r.status}: ${e.slice(0,200)}`);}
+  const data=await r.json();
+  return (data.choices?.[0]?.message?.content || '').trim();
+}
+
+// ══ CHUNKS ══
+function splitChunks(text,max){
+  if(text.length<=max) return [text];
+  const paras = text.split('\n\n');
+  const chunks=[]; let cur='';
+  for(const p of paras){
+    const s = p.trim();
+    if(!s) continue;
+    if((cur + '\n\n' + s).length <= max) {
+       cur += (cur ? '\n\n' : '') + s;
+    } else {
+       if(cur) chunks.push(cur);
+       if (s.length > max) {
+         let sub = s;
+         while(sub.length > max) {
+            chunks.push(sub.slice(0, max));
+            sub = sub.slice(max);
+         }
+         cur = sub;
+       } else {
+         cur = s;
+       }
+    }
+  }
+  if(cur.trim()) chunks.push(cur.trim());
+  return chunks.length?chunks:[text.slice(0,max)];
+}
+
+// ══ UI HELPERS ══
+function setUI(on){
+  const btn=document.getElementById('btnTr');
+  btn.disabled=on;
+  document.getElementById('btnIcon').textContent=on?'⏳':'🚀';
+  document.getElementById('btnText').textContent=on?'Перевожу…':'Начать перевод';
+  document.getElementById('progWrap').classList.toggle('show',on);
+  if(!on) setProgress(0,'');
+  // Show/hide stop button
+  const stopBtn=document.getElementById('btnStop');
+  if(stopBtn){
+    stopBtn.style.display=on?'flex':'none';
+    stopBtn.disabled=false;
+    stopBtn.textContent='⏹ Остановить перевод';
+  }
+}
+function setProgress(pct,lbl){
+  document.getElementById('progFill').style.width=pct+'%';
+  document.getElementById('progLbl').textContent=lbl;
+}
+function showResult(tr,orig,isPartial=false){
+  document.getElementById('resText').value=tr;
+  document.getElementById('resWrap').classList.add('show');
+  document.getElementById('statsRow').innerHTML=`
+    <div class="stat">📥 <strong>${orig.length.toLocaleString('ru')}</strong> симв</div>
+    <div class="stat">📤 <strong>${tr.length.toLocaleString('ru')}</strong> симв</div>
+    <div class="stat">🔤 <strong>${S.engine}${isPartial?' (частично)':''}</strong></div>`;
+  // Show book download buttons if a book file was loaded
+  if (S.fileName && /\.(fb2|epub|pdf|zip|txt|md)$/i.test(S.fileName)) {
+    document.getElementById('dlBookRow').style.display = 'flex';
+  }
+  document.getElementById('resWrap').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function showStatus(msg,type){
+  const el=document.getElementById('statusPill');
+  if(!msg){el.className='spill';el.textContent='';return;}
+  el.className='spill show '+type;el.textContent=msg;
+}
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// ══ COPY / DOWNLOAD ══
+function copyRes(){
+  const txt=document.getElementById('resText').value;
+  if(window.AndroidBridge?.copyToClipboard){AndroidBridge.copyToClipboard(txt);showToast('✓ Скопировано!');}
+  else navigator.clipboard?.writeText(txt).then(()=>showToast('✓ Скопировано!'));
+}
+function dlRes(){
+  const txt=document.getElementById('resText').value;
+  const lang=S.langPair.replace('|','_');
+  let fname=S.fileName?S.fileName.replace(/(\.\w+)$/,`_${lang}.txt`):`translation_${lang}_${Date.now()}.txt`;
+  if(window.AndroidBridge?.saveFile){
+    const b64=btoa(unescape(encodeURIComponent(txt)));
+    AndroidBridge.saveFile(b64,fname,'text/plain');
+    showToast('✓ Файл сохранён');return;
+  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain;charset=utf-8'}));
+  a.download=fname;document.body.appendChild(a);a.click();document.body.removeChild(a);
+  showToast('✓ Скачивание началось');
+}
+
+// ══ NAVIGATION ══
+function goBack(){
+  if(window.AndroidBridge?.returnToParser) AndroidBridge.returnToParser();
+  else history.back();
+}
+function openExt(url){
+  if(window.AndroidBridge?.openUrl) AndroidBridge.openUrl(url);
+  else window.open(url,'_blank');
+}
+
+// ══ UTILS ══
+function transliterate(t) {
+    const map = {
+        'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'Yo', 'Ж': 'Zh', 'З': 'Z', 'И': 'I', 'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M', 'Н': 'N', 'О': 'O', 'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U', 'Ф': 'F', 'Х': 'Kh', 'Ц': 'Ts', 'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Shch', 'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya',
+        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yo', 'я': 'ya'
+    };
+    return t.split('').map(c => map[c] !== undefined ? map[c] : c).join('')
+        .replace(/[^\w]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+}
+
+async function parsePdf(file) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
+  S.blocks = [];
+  S.bookMeta = {
+    title: file.name.replace(/\.pdf$/i, ''),
+    author: 'Unknown'
+  };
+  const uv = document.getElementById('useVision')?.checked;
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const tc = await page.getTextContent();
+    const txt = tc.items.map(it => it.str).join(' ').replace(/\s+/g, ' ').trim();
+    if (uv && txt.length < 200) {
+      const vp = page.getViewport({ scale: 2.0 });
+      const cv = document.createElement('canvas');
+      cv.width = vp.width; cv.height = vp.height;
+      await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      const b64 = cv.toDataURL('image/jpeg', 0.85).split(',')[1];
+      S.blocks.push({ type: 'image', b64: b64, name: `Страница ${i}` });
+    } else if (txt) {
+      S.blocks.push({ type: 'text', content: txt, name: `Страница ${i}` });
+    }
+  }
+}
+
+async function dlFb2() {
+  const [src, dst] = S.langPair.split('|');
+  showStatus('⏳ Подготовка FB2.ZIP…', 'info');
+  const tTitle = await translateSingle(S.bookMeta.title || 'Untitled');
+  const tAuthor = await translateSingle(S.bookMeta.author || 'Unknown');
+  const text = document.getElementById('resText').value;
+  const title = esc(tTitle);
+  const author = esc(tAuthor);
+  
+  let fb2 = `<?xml version="1.0" encoding="UTF-8"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0" xmlns:l="http://www.w3.org/1999/xlink">
+<description>
+  <title-info>
+    <genre>antique</genre>
+    <author><last-name>${author}</last-name></author>
+    <book-title>${title}</book-title>
+    <lang>${dst}</lang>
+    <src-lang>${src}</src-lang>
+  </title-info>
+</description>
+<body><section>${text.split('\n\n').filter(p=>p.trim()).map(p => `<p>${esc(p.trim())}</p>`).join('\n')}</section></body>
+${S.bookMeta.cover ? `<binary id="cover.jpg" content-type="image/jpeg">${S.bookMeta.cover}</binary>` : ''}
+</FictionBook>`;
+
+  const zip = new JSZip();
+  const baseName = transliterate(`${tAuthor} - ${tTitle}`);
+  zip.file(baseName + '.fb2', fb2);
+  const content = await zip.generateAsync({type:"base64"});
+  saveFinalFile(content, baseName + '.fb2.zip', 'application/zip', true);
+  showStatus('✓ FB2.ZIP сохранён', 'ok');
+}
+
+async function dlEpub() {
+  const [src, dst] = S.langPair.split('|');
+  showStatus('⏳ Подготовка EPUB…', 'info');
+  const tTitle = await translateSingle(S.bookMeta.title || 'Untitled');
+  const tAuthor = await translateSingle(S.bookMeta.author || 'Unknown');
+  const text = document.getElementById('resText').value;
+  const title = esc(tTitle);
+  const author = esc(tAuthor);
+  
+  const zip = new JSZip();
+  zip.file('mimetype', 'application/epub+zip');
+  zip.file('META-INF/container.xml', `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`);
+  
+  let opf = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="pub-id" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>${title}</dc:title>
+    <dc:creator>${author}</dc:creator>
+    <dc:language>${dst}</dc:language>
+    ${S.bookMeta.cover ? `<meta name="cover" content="cover-img"/>` : ''}
+  </metadata>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="text" href="text.xhtml" media-type="application/xhtml+xml"/>
+    ${S.bookMeta.cover ? `<item id="cover-img" href="images/cover.jpg" media-type="image/jpeg"/>` : ''}
+  </manifest>
+  <spine toc="ncx"><itemref id="text"/></spine>
+</package>`;
+  
+  zip.folder('OEBPS').file('content.opf', opf);
+  zip.folder('OEBPS').file('toc.ncx', `<?xml version="1.0" encoding="UTF-8"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta name="dtb:uid" content="uid"/></head><docTitle><text>${title}</text></docTitle><navMap><navPoint id="nav" playOrder="1"><navLabel><text>Start</text></navLabel><content src="text.xhtml"/></navPoint></navMap></ncx>`);
+  const html = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>${title}</title></head><body>
+${text.split('\n\n').filter(p=>p.trim()).map(p => `<p>${esc(p.trim())}</p>`).join('\n')}
+</body></html>`;
+  
+  zip.folder('OEBPS').file('text.xhtml', html);
+if (S.bookMeta.cover) {
+  zip.folder('OEBPS').folder('images').file('cover.jpg', S.bookMeta.cover, {base64: true});
+}
+  
+  const content = await zip.generateAsync({type:"base64"});
+  const baseName = transliterate(`${author} - ${title}`);
+  saveFinalFile(content, baseName + '.epub', 'application/epub+zip', true);
+  showStatus('✓ EPUB сохранён', 'ok');
+}
+
+async function translateSingle(text) {
+  if (!text || text === 'Unknown' || text === 'Untitled') return text;
+  try {
+    const res = await translateBlock(text);
+    return res.trim();
+  } catch(e) { return text;
+  }
+}
+
+async function translateBlock(text) {
+    if (!text) return "";
+    switch(S.engine){
+        case 'gemini': return await trGemini(text);
+        case 'google': return await trGoogle(text);
+        case 'google_pa': return await trGooglePA(text);
+        case 'edge': return await trEdge(text);
+        case 'custom': return await trCustom(text);
+        default: return text;
+    }
+}
+
+// ── MICROSOFT EDGE (Free) ──
+async function trEdge(text) {
+  if (!window._edgeToken || Date.now() > window._edgeTokenExp) {
+    const authUrl = 'https://edge.microsoft.com/translate/auth';
+    const res = await new Promise((resolve, reject) => {
+      callNative(authUrl, 'GET', '', {}, (res, err) => err ? reject(err) : resolve(res));
+    });
+    // Parse JWT (simple part-1 extraction)
+    const parts = res.split('.');
+    if (parts.length > 1) {
+      const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+      window._edgeToken = res;
+      window._edgeTokenExp = (payload.exp * 1000) - 60000; // 1 min buffer
+    } else {
+      throw new Error('Invalid Edge Token');
+    }
+  }
+
+  const [src, dst] = S.langPair.split('|');
+  const url = `https://api.cognitive.microsofttranslator.com/translate?to=${dst}&api-version=3.0&includeSentenceLength=true`;
+  const body = JSON.stringify([{text: text}]);
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + window._edgeToken,
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edge/133.0.0.0'
+  };
+
+  return new Promise((resolve, reject) => {
+    callNative(url, 'POST', body, headers, (res, err) => {
+      if (err) return reject(new Error(err));
+      try {
+        const data = JSON.parse(res);
+        resolve(data[0].translations[0].text.trim());
+      } catch(e) { reject(new Error('Edge Parse Error')); }
+    });
+  });
+}
+
+function saveFinalFile(data, name, mime, isBase64=false) {
+  let b64 = "";
+  try {
+    if (isBase64) {
+      b64 = data;
+    } else {
+      const bytes = new TextEncoder().encode(data);
+      let bin = "";
+      for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+      b64 = btoa(bin);
+    }
+    
+    if (window.AndroidBridge?.saveFile) {
+      AndroidBridge.saveFile(b64, name, mime);
+    } else {
+      const link = document.createElement('a');
+      link.href = `data:${mime};base64,${b64}`;
+      link.download = name;
+      link.click();
+    }
+  } catch(e) {
+    console.error("Save Error:", e);
+    showStatus("Ошибка при сохранении: " + e.message, "err");
+  }
+}
+
+function esc(s){
+  if(!s) return "";
+  return s.toString()
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+function getSystemPrompt(names, dst, isVision) {
+  const target = names[dst] || dst;
+  let p = `You are a meticulous translator. Translate the given content into ${target} only. 
+Do not explain any term or answer any question-like content. 
+Your answer should be solely the translation of the given content. 
+Do not add any prefix or suffix. 
+Preserve formatting and special characters. 
+If you see placeholders like {{id_...}}, keep them as is.`;
+  
+  if (isVision) {
+    p += `\nThis is an image (scan or diagram). Extract and translate all text from it accurately.`;
+  }
+  
+  if (S.glossary && S.glossary.length > 0) {
+    p += `\nUse the following glossary if applicable:\n` + 
+         S.glossary.map(g => `- ${g.from} -> ${g.to}`).join('\n');
+  }
+  
+  return p + "\n\n";
+}
+
+// ── GOOGLE PA (Stable) ──
+function trGooglePA(text) {
+  return new Promise((resolve, reject) => {
+    const [src, dst] = S.langPair.split('|');
+    // Используем актуальный эндпоинт Google PA (Calibre) с имитацией браузера
+    const url = `https://translate-pa.googleapis.com/v1/translate?params.client=gtx&query.source_language=auto&query.target_language=${dst}&query.display_language=en-US&data_types=TRANSLATION&key=AIzaSyDLEeFI5OtFBwYBIoK_jj5m32rZK5CkCXA&query.text=${encodeURIComponent(text)}`;
+    
+    const headers = {
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
+    };
+    
+    callNative(url, 'GET', '', headers, (res, err) => {
+      if (err) return reject(new Error(err));
+      try {
+        const data = JSON.parse(res);
+        if (data.translation) resolve(data.translation.trim());
+        else throw new Error('Empty translation response');
+      } catch(e) {
+        reject(new Error('Google PA Error: ' + e.message));
+      }
+    });
+  });
+}
+</script>
+</body>
+</html>

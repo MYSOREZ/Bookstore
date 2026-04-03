@@ -27,13 +27,10 @@ object AppLogger {
     }
 
     private fun append(level: String, tag: String, msg: String) {
-        // Logging to UI disabled per user request
-        /*
         val line = "${fmt.format(Date())} $level/$tag: $msg"
         if (lines.size >= MAX_LINES) lines.removeAt(0)
         lines.add(line)
         listeners.forEach { it(line) }
-        */
     }
 
     fun addListener(l: (String) -> Unit) { listeners.add(l) }

@@ -12,9 +12,23 @@
         android:layout_height="match_parent"
         android:visibility="visible" />
 
+    <!-- Скрытый WebView — переводчик -->
+    <WebView
+        android:id="@+id/webViewTranslator"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
     <!-- Скрытый WebView — форум -->
     <WebView
         android:id="@+id/webViewForum"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
+    <!-- WebView исключительно для Google AI Studio Auth -->
+    <WebView
+        android:id="@+id/webViewGeminiAuth"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:visibility="gone" />
