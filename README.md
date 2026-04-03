@@ -1,142 +1,58 @@
-# Parser Book 2 — Android App
+# Книжная лавка (Bookstore) — Комбайн для Книгохранилища 4PDA
 
-WebView приложение для парсинга книг с форума 4PDA и публикации серий.
+![Logo](app/src/main/assets/logo.png)
 
-## Функциональность
+Универсальное Android-приложение для подготовки, перевода и публикации книг на форуме 4PDA. Сочетает в себе мощный локальный парсер, современный ИИ-переводчик и инструменты автоматизации для работы с разделом «Книгохранилище».
 
-### 3 вкладки (BottomNavigation):
+## 🚀 Основные возможности
 
-| Вкладка | Функция |
-|---------|---------|
-| **Форум** | WebView с `4pda.to/forum/index.php?showforum=18` — просматривать темы, авторизоваться |
-| **Парсер** | Локальный парсер книг (FB2, EPUB, PDF, ZIP). Генерация BB-кода |
-| **Публикация** | WebView с `4pda.to/forum/index.php?act=zfw&f=18` — форма публикации |
+### 📚 Универсальный парсер книг
+*   **Поддерживаемые форматы**: FB2, FB2.ZIP, EPUB, PDF.
+*   **Автоматизация**: Извлечение метаданных (Автор, Название, Серия, Номер, Жанр, Аннотация) прямо из файлов.
+*   **Рекурсивный поиск**: Глубокое сканирование ZIP-архивов и вложенных папок.
+*   **Управление обложками**: Автоматический ресайз до 500px, предпросмотр и возможность скачивания обложки отдельно.
+*   **Генерация BB-кода**: Мгновенное создание идеально отформатированного текста для постов на 4PDA.
 
-### Парсер книг (assets/parser.html)
+### 🌐 Интеллектуальный переводчик (AI)
+*   **Движки на любой выбор**:
+    *   **Google Gemini AI** (Flash 2.0 / Pro): Высокое качество и скорость.
+    *   **Google Free / Edge Free**: Полностью бесплатные решения без ключей.
+    *   **Custom AI**: Поддержка любого OpenAI-совместимого API (Claude, Groq, Together, Ollama).
+*   **Авто-скрапинг ключей**: Встроенный механизм автоматического получения API-ключа Gemini из Google AI Studio — достаточно просто войти в аккаунт.
+*   **Глоссарий**: Поддержка пользовательских правил перевода для сохранения контекста и терминологии.
 
-- ✅ FB2 (UTF-8 и Windows-1251)
-- ✅ FB2.ZIP и вложенные архивы (рекурсивно)
-- ✅ EPUB (с Calibre метаданными для серий)
-- ✅ PDF (метаданные + рендер обложки)
-- ✅ Множественные авторы
-- ✅ Генерация BB-кода для 4PDA
-- ✅ Пакетное скачивание FB2.ZIP
-- ✅ Транслитерация имён файлов
-- ✅ Управление порядком книг (↑↓)
-- ✅ Обложки с оптимизацией (resize 500px)
+### 🤖 Автоматизация 4PDA
+*   **Нативная интеграция**: Встроенный браузер с поддержкой авторизации (автозаполнение логина/пароля).
+*   **Разбор по ссылке**: Вставьте ссылку на любой пост 4PDA, и программа сама извлечет данные раздачи и скачает файлы книг для редактирования.
+*   **Поиск по базе**: Прямой поиск книг по Книгохранилищу 4PDA из интерфейса парсера.
+*   **Smart Upload**: Автоматическая вставка сгенерированного BB-кода в форму публикации.
 
-### JavaScript ↔ Android Bridge
+## 🛠 Технологический стек
+*   **Язык**: Kotlin (современная Android-разработка).
+*   **Интерфейс**: WebView + современный стек HTML/CSS (Glassmorphism, Inter font).
+*   **Сетевой слой**: OkHttp, WebSocket (для быстрого обмена статусами и логирования).
+*   **JS-библиотеки**: JSZip (архивы), PDF.js (работа с PDF).
+*   **Безопасность**: Защищенное хранение кук и API-ключей.
 
-**Из парсера в Android:**
-```javascript
-AndroidBridge.sendBBCodeToForum(bbCode);  // → открывает вкладку Публикация и вставляет BB-код
-AndroidBridge.copyToClipboard(text);       // → копирует в системный буфер
-AndroidBridge.showToast(message);          // → показывает Toast
-AndroidBridge.getPlatform();               // → "android"
-```
+## 📁 Структура проекта
+*   `app/src/main/java/com/bookparser/app/` — Ядро приложения на Kotlin.
+    *   `MainActivity.kt` — Управление вкладками и мостами JS ↔ Android.
+    *   `WebDomAutomation.kt` — Скрипты автоматизации действий на форуме.
+    *   `FourPDAWebSocketClient.kt` — Модуль WebSocket связи.
+*   `app/src/main/assets/` — Фронтенд-составляющая.
+    *   `parser.html` — Основной интерфейс парсера и поиска.
+    *   `translator.html` — Интерфейс AI-переводчика.
 
-**BB-код инжектируется** автоматически в textarea форумной формы публикации.
+## 🛠 Сборка и установка
+1.  Откройте проект в **Android Studio Hedgehog** (или новее).
+2.  Убедитесь, что установлен **JDK 17**.
+3.  Синхронизируйте Gradle-проект.
+4.  Соберите APK через `Build -> Build APK(s)`.
 
----
-
-## Сборка APK
-
-### Требования
-- Android Studio Hedgehog (2023.1.1) или новее
-- JDK 17
-- Android SDK 34
-
-### Шаги
-
-```bash
-# 1. Открыть в Android Studio
-File → Open → выбрать папку parser-book-2
-
-# 2. Синхронизировать Gradle
-File → Sync Project with Gradle Files
-
-# 3. Собрать Debug APK
-Build → Build Bundle(s)/APK(s) → Build APK(s)
-
-# 4. APK будет в:
-# app/build/outputs/apk/debug/app-debug.apk
-```
-
-### Или через командную строку
-
-```bash
-cd parser-book-2
-./gradlew assembleDebug
-# APK: app/build/outputs/apk/debug/app-debug.apk
-```
+## 📝 Примечания
+*   Приложение требует разрешений на доступ к интернету и хранилищу файлов (READ_EXTERNAL_STORAGE / READ_MEDIA_IMAGES).
+*   Авторизация на 4PDA происходит через стандартный CookieManager Android.
+*   Все файлы обрабатываются локально на устройстве (кроме отправки в облачные ИИ для перевода).
 
 ---
-
-## Структура проекта
-
-```
-parser-book-2/
-├── app/
-│   ├── src/main/
-│   │   ├── java/com/bookparser/app/
-│   │   │   └── MainActivity.java       ← главный файл
-│   │   ├── assets/
-│   │   │   └── parser.html             ← парсер книг (HTML+JS)
-│   │   ├── res/
-│   │   │   ├── layout/activity_main.xml
-│   │   │   ├── menu/bottom_nav_menu.xml
-│   │   │   ├── values/{colors,strings,themes}.xml
-│   │   │   ├── drawable/{ic_forum,ic_book,ic_publish}.xml
-│   │   │   └── xml/{network_security_config,file_paths}.xml
-│   │   └── AndroidManifest.xml
-│   ├── build.gradle
-│   └── proguard-rules.pro
-├── build.gradle
-├── settings.gradle
-└── gradle/wrapper/gradle-wrapper.properties
-```
-
----
-
-## Доработки при необходимости
-
-### Добавить ic_launcher иконки
-
-В Android Studio: правой кнопкой на `res` → New → Image Asset → выбрать иконку
-
-### Изменить URL форума
-
-В `MainActivity.java`:
-```java
-private static final String URL_FORUM_BROWSE  = "https://4pda.to/forum/index.php?showforum=18";
-private static final String URL_FORUM_PUBLISH = "https://4pda.to/forum/index.php?act=zfw&f=18";
-```
-
-### Изменить парсер
-
-Редактировать `app/src/main/assets/parser.html` — обычный HTML/JS файл.
-
-### Добавить тёмную тему
-
-В `values/themes.xml` изменить родительскую тему на:
-```xml
-parent="Theme.MaterialComponents.DayNight.NoActionBar"
-```
-
-И добавить `values-night/themes.xml` с тёмными цветами.
-
----
-
-## Требования к устройству
-
-- Android 8.0 (API 26) и выше
-- Интернет для загрузки 4PDA и CDN библиотек
-- Разрешения: INTERNET, READ_EXTERNAL_STORAGE (для файлов)
-
----
-
-## Примечания
-
-- Авторизация на 4PDA сохраняется через CookieManager (общие куки между форум-вкладкой и публикацией)
-- Парсер работает локально, файлы не покидают устройство
-- BB-код автоматически вставляется в форму публикации при переходе на вкладку «Публикация»
+*Разработано для сообщества 4PDA.*
