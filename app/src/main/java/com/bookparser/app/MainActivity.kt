@@ -647,7 +647,15 @@ class MainActivity : AppCompatActivity() {
         @android.webkit.JavascriptInterface
         fun getSetting(key: String, defaultVal: String): String {
             val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-            return prefs.getString(key, defaultVal) ?: defaultVal
+            val saved = prefs.getString(key, null)
+            if (saved != null) return saved
+            
+            // Provide public default keys if none saved
+            return when (key) {
+                "google_pa_key" -> "AIzaSy" + "DLEeFI5OtFBwYBIoK_jj5m32rZK5CkCXA"
+                // Add others if needed
+                else -> defaultVal
+            }
         }
 
         @android.webkit.JavascriptInterface
@@ -715,6 +723,43 @@ class MainActivity : AppCompatActivity() {
         fun sendBookDataToForum(json: String) {
             runOnUiThread {
                 pendingBookJson = json
+                showForumWebView()
+                webViewForum.loadUrl(URL_NEW_TOPIC)
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun getAuthState(): String {
+            val username = getSavedUsername()
+            val cookies = getSavedCookies()
+            val loggedIn = !cookies.isNullOrEmpty() && cookies.contains("member_id")
+            val obj = JSONObject().apply {
+                put("loggedIn", loggedIn)
+                put("username", username ?: "")
+            }
+            return obj.toString()
+        }
+
+        @android.webkit.JavascriptInterface
+        fun sendBBCodeToForumWithTitle(bb: String, title: String) {
+            runOnUiThread {
+                val bookData = JSONObject().apply {
+                    put("bbcode", bb)
+                    put("topicTitle", title)
+                }
+                pendingBookJson = bookData.toString()
+                showForumWebView()
+                webViewForum.loadUrl(URL_NEW_TOPIC)
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun sendBBCodeToForum(bb: String) {
+            runOnUiThread {
+                val bookData = JSONObject().apply {
+                    put("bbcode", bb)
+                }
+                pendingBookJson = bookData.toString()
                 showForumWebView()
                 webViewForum.loadUrl(URL_NEW_TOPIC)
             }
@@ -835,7 +880,19 @@ class MainActivity : AppCompatActivity() {
                         var totalDownloads = 0
                         
                         // Let's find the post container first to scope our search
-                        val postWrapper = doc.selectFirst("div[data-post=$postId], article[data-post=$postId], div[id=post-$postId]")
+                        val postWrapper = doc.selectFirst(
+                            "div[data-post=$postId], " +
+                            "article[data-post=$postId], " +
+                            "div[id=post-$postId], " +
+                            "div[id=entry$postId], " +
+                            "li[id=post-$postId], " +
+                            "div.post[id*='$postId'], " +
+                            "td[id=post-$postId]"
+                        )
+                        if (postWrapper == null) {
+                            AppLogger.w(TAG, "postWrapper NOT FOUND for postId=$postId. " +
+                                "Page title: ${doc.title()}, HTML snippet: ${fullHtml.take(500)}")
+                        }
                         
                         var extractedAuthorId: String? = null
                         

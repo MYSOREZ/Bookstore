@@ -823,8 +823,9 @@
             </div>
         </div>
 
-        <div style="margin:0 12px 16px">
-            <button class="btn btn-success" onclick="downloadZip()">📦 Скачать все FB2.ZIP</button>
+        <div style="margin:0 12px 16px; display:flex; gap:8px;">
+            <button class="btn btn-success" style="flex:1" onclick="downloadZip()">📦 Скачать все FB2.ZIP</button>
+            <button class="btn" style="flex:1; background: linear-gradient(135deg,#7c3aed,#4f46e5);" onclick="downloadAllCovers()">🖼 Скачать обложки</button>
         </div>
 
     </div>
@@ -855,10 +856,6 @@
     </div>
 
     <script>
-        // ════════════════════════════════════════════════
-        //  LOGGING (REMOVED)
-        // ════════════════════════════════════════════════
-
         // ════════════════════════════════════════════════
         //  STATE
         // ════════════════════════════════════════════════
@@ -1021,27 +1018,17 @@
             const parts = raw.split(/[\s,;]+/).filter(Boolean);
             const res = parts.map(p => {
                 let s = p.trim().toLowerCase().replace(/-/g, '_');
-
-                // 1. Direct match
                 if (GENRE_MAP[s]) return GENRE_MAP[s];
-
-                // 2. Smart 'etc' handling
                 if (s.endsWith('_etc')) {
                     const base = s.replace('_etc', '');
                     if (GENRE_MAP[base]) return GENRE_MAP[base] + ' (прочее)';
                 }
-
-                // 3. Aggressive prefix stripping
                 const stripped = s.replace(/^(sf|fantasy|prose|det|love|adv|child|sci|nonf|humor|comp|ref|religion)_?/, '');
                 if (GENRE_MAP[stripped]) return GENRE_MAP[stripped];
-
-                // 4. underscore fallback
                 if (s.includes('_')) {
                     const lastPart = s.split('_').pop();
                     if (GENRE_MAP[lastPart]) return GENRE_MAP[lastPart];
                 }
-
-                // 5. Final fallback - keep original (lowercase) for better debugging
                 return p;
             });
             const result = [...new Set(res)].join(', ');
@@ -1057,7 +1044,6 @@
 
             area.addEventListener('click', () => input.click());
 
-            // Wire search input Enter key
             const searchInput = document.getElementById('searchQueryInput');
             if (searchInput) searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(); });
             area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('drag'); });
@@ -1065,12 +1051,10 @@
             area.addEventListener('drop', e => { e.preventDefault(); area.classList.remove('drag'); handleFiles(e.dataTransfer.files); });
             input.addEventListener('change', e => handleFiles(e.target.files));
 
-            // Bridge check + request auth state
             setTimeout(() => {
                 const bs = document.getElementById('bridgeStatus');
                 if (window.AndroidBridge) {
                     if (bs) { bs.innerText = 'Bridge: OK'; bs.className = 'bridge-status bridge-ok'; }
-                    // Ask Android for current auth state
                     if (AndroidBridge.getAuthState) {
                         const state = AndroidBridge.getAuthState();
                         if (state) {
@@ -1092,7 +1076,6 @@
         let authState = { loggedIn: false, username: '' };
 
         function openLoginPage() {
-            // Open real 4PDA login page in native forum WebView (shows captcha)
             if (window.AndroidBridge && AndroidBridge.openForumUrl) {
                 AndroidBridge.openForumUrl('https://4pda.to/forum/index.php?act=auth');
             } else {
@@ -1100,7 +1083,6 @@
             }
         }
 
-        // Called from Android after user logged in via native WebView
         window.onAuthStateChanged = function (loggedIn, username) {
             authState = { loggedIn: !!loggedIn, username: username || '' };
             const block = document.getElementById('authBlock');
@@ -1193,7 +1175,6 @@
             const result = [...normalFiles];
             archives.forEach((filesInGroup, base) => {
                 if (filesInGroup.length > 1 || filesInGroup.some(f => isMultiVolumeArchivePart(f.name))) {
-                    // Sort: .z01, .z02 ... .zip last
                     filesInGroup.sort((a, b) => {
                         const extA = a.name.split('.').pop().toLowerCase();
                         const extB = b.name.split('.').pop().toLowerCase();
@@ -1274,8 +1255,18 @@
         function addBook() {
             if (!currentBook || (!currentBook.title && !currentBook.author)) return;
             currentBook.filename = makeFilename(currentBook);
-            books.push({ ...currentBook });
-            // Auto-search (v23)
+            // Deduplicate: don't add if same author+title+series+seriesNum already exists
+            const norm = s => (s || '').toLowerCase().replace(/[._\-—–\s]+/g, ' ').trim();
+            const isDuplicate = books.some(b =>
+                norm(b.author) === norm(currentBook.author) &&
+                norm(b.title) === norm(currentBook.title) &&
+                norm(b.series) === norm(currentBook.series) &&
+                norm(b.seriesNum) === norm(currentBook.seriesNum)
+            );
+            if (!isDuplicate) {
+                books.push({ ...currentBook });
+            }
+            // Auto-search on first book only
             if (books.length === 1 && currentBook.title) {
                 setTimeout(() => searchOnForum(), 800);
             }
@@ -1304,7 +1295,6 @@
                 return;
             }
 
-            // Authors
             const authors = Array.from(ti.querySelectorAll('author'));
             currentBook.author = authors.map(a => {
                 const fn = a.querySelector('first-name')?.textContent.trim() || '';
@@ -1325,7 +1315,6 @@
             }
 
             const annot = ti.querySelector('annotation');
-            // Annotation in spoiler
             if (annot) {
                 currentBook.annotation = Array.from(annot.querySelectorAll('p'))
                     .map(p => p.textContent.trim())
@@ -1335,7 +1324,6 @@
                     .trim();
             }
 
-            // Improved Genre Handling
             const genreTags = Array.from(ti.querySelectorAll('genre'));
             const genreCodes = genreTags.map(g => g.textContent.trim()).filter(Boolean).join(', ');
             if (genreCodes) {
@@ -1345,14 +1333,12 @@
 
             currentBook.lang = ti.querySelector('lang')?.textContent.trim() || '';
 
-            // Year (from publish-info or document-info or date)
             const yr = doc.querySelector('publish-info year')?.textContent.trim() ||
                 doc.querySelector('document-info date')?.textContent.trim() ||
                 doc.querySelector('date')?.textContent.trim() || '';
             const yrMatch = yr.match(/\d{4}/);
             currentBook.year = yrMatch ? yrMatch[0] : '';
 
-            // Improved Cover Extraction
             const cp = ti.querySelector('coverpage image');
             let foundBin = null;
             let coverMime = 'image/jpeg';
@@ -1360,21 +1346,16 @@
             if (cp) {
                 const href = cp.getAttribute('l:href') || cp.getAttribute('xlink:href') || cp.getAttribute('href') || '';
                 const id = href.replace('#', '');
-
-                // 1. Direct search by ID
                 foundBin = doc.getElementById(id) ||
                     doc.querySelector(`binary[id="${id}"]`) ||
                     doc.querySelector(`binary[*|id="${id}"]`);
-
                 if (foundBin) {
                     coverMime = foundBin.getAttribute('content-type') || 'image/jpeg';
                 }
             }
 
-            // 2. Fallback: Search for any binary that might be a cover if not found yet
             if (!foundBin) {
                 const allBins = Array.from(doc.querySelectorAll('binary'));
-                // Take first binary as fallback if it looks like an image
                 for (let b of allBins) {
                     const ct = b.getAttribute('content-type') || '';
                     if (ct.includes('image') || b.textContent.length > 1000) {
@@ -1386,12 +1367,11 @@
             }
 
             if (foundBin) {
-                const rawB64 = foundBin.textContent.replace(/\s/g, ''); // Clean base64
+                const rawB64 = foundBin.textContent.replace(/\s/g, '');
                 currentBook.cover = {
                     data: await optimizeCover(rawB64, coverMime),
                     mime: coverMime
                 };
-            } else {
             }
         }
 
@@ -1457,7 +1437,6 @@
             const si = opfDoc.querySelector('meta[name="calibre:series_index"]');
             if (si) currentBook.seriesNum = si.getAttribute('content') || '';
 
-            // Cover
             const coverItem = opfDoc.querySelector('item[properties*="cover-image"]') ||
                 opfDoc.querySelector('item[id="cover"]') ||
                 opfDoc.querySelector('item[media-type^="image"]');
@@ -1474,7 +1453,6 @@
             currentBook.epubZip = zip;
             currentBook.epubOpfDir = opfDir;
 
-            // Text extraction (v22)
             try {
                 const spine = Array.from(opfDoc.querySelectorAll('spine > itemref'));
                 const manifest = Array.from(opfDoc.querySelectorAll('manifest > item'));
@@ -1501,14 +1479,12 @@
             resetBook();
             const buf = await file.arrayBuffer();
             currentBook.originalBuffer = buf;
-            // Use clone for pdf.js to prevent detaching originalBuffer
             const pdf = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
             const info = (await pdf.getMetadata().catch(() => ({ info: {} }))).info || {};
             currentBook.title = info.Title?.trim() || file.name.replace(/\.pdf$/i, '');
             currentBook.author = info.Author?.trim() || 'Неизвестный автор';
             currentBook.lang = '';
 
-            // Render p.1 as cover
             try {
                 const page = await pdf.getPage(1);
                 const vp = page.getViewport({ scale: 1.5 });
@@ -1519,7 +1495,6 @@
                 const b64 = cv.toDataURL('image/jpeg', 0.8).split(',')[1];
                 currentBook.cover = { data: await optimizeCover(b64, 'image/jpeg'), mime: 'image/jpeg' };
             } catch (e) { }
-            // Text extraction (v22)
             try {
                 let fullText = '';
                 for (let i = 1; i <= pdf.numPages; i++) {
@@ -1538,12 +1513,13 @@
         function optimizeCover(b64, mime) {
             return new Promise(resolve => {
                 if (!b64) { resolve(null); return; }
-                const cleanB64 = b64.replace(/\s/g, ''); // Ensure no whitespaces
+                const cleanB64 = b64.replace(/\s/g, '');
                 const img = new Image();
                 img.onload = () => {
                     const MAX = 500;
-                    if (Math.max(img.width, img.height) <= MAX) { resolve(cleanB64); return; }
-                    const sc = MAX / Math.max(img.width, img.height);
+                    const longSide = Math.max(img.width, img.height);
+                    if (!longSide) { resolve(cleanB64); return; }
+                    const sc = MAX / longSide;
                     const cv = document.createElement('canvas');
                     cv.width = Math.round(img.width * sc);
                     cv.height = Math.round(img.height * sc);
@@ -1565,7 +1541,8 @@
                 return;
             }
             const b = currentBook;
-            const name = transliterate(`${b.author} - ${b.title}`).replace(/\s+/g, '_') + '.jpg';
+            const numPrefix = b.seriesNum ? b.seriesNum + '_' : '';
+            const name = numPrefix + transliterate(`${b.author} - ${b.title}`).replace(/\s+/g, '_') + '.jpg';
 
             if (window.AndroidBridge && AndroidBridge.saveFile) {
                 try {
@@ -1585,7 +1562,6 @@
             updateBadge();
             updateBookList();
             updateCoversGrid();
-            // Select newest book if none selected or after upload
             if (books.length > 0) {
                 selectBook(books.length - 1);
             }
@@ -1595,18 +1571,10 @@
 
         function selectBook(index) {
             if (index < 0 || index >= books.length) return;
-
-            // 1. Remove selection from all
             document.querySelectorAll('.book-item, .cover-thumb').forEach(el => el.classList.remove('selected'));
-
-            // 2. Highlight new elements
             document.querySelectorAll(`.book-item[data-index="${index}"], .cover-thumb[data-index="${index}"]`)
                 .forEach(el => el.classList.add('selected'));
-
-            // 3. Copy data
             currentBook = { ...books[index] };
-
-            // 4. Update details panel
             updateCurrentBookUI();
         }
 
@@ -1632,7 +1600,7 @@
                 document.getElementById('annotCard').style.display = 'block';
                 let annotText = currentBook.annotation;
                 if (books.length > 1) {
-                    annotText = books.map((b, idx) => `${idx + 1}. [b]${b.title || 'Без названия'}[/b]\n${b.annotation || 'Добавить аннотацию'}`).join('\n\n');
+                    annotText = books.map((b, idx) => `[B]${b.seriesNum || idx + 1}. ${b.title || 'Без названия'}[/B]\n${b.annotation || 'Добавить аннотацию'}`).join('\n\n');
                 }
                 document.getElementById('iAnnotation').textContent = annotText;
             } else {
@@ -1759,7 +1727,6 @@
         }
 
         window.onPublishProgress = function (step, msg) {
-            // silent progress in background, just status bar
             if (step === 'complete') {
                 status('✅ Готово к публикации. Проверьте форму на форуме.', 'ok');
             } else {
@@ -1771,19 +1738,27 @@
         //  PARSING FORUM POST (LINK GRABBER)
         // ════════════════════════════════════════════════
         function parsePostUrl() {
-            const url = document.getElementById('postUrlInput').value.trim();
-            if (!url) {
-                status('Введите ссылку на пост 4PDA', 'err');
+            const urlInput = document.getElementById('postUrlInput');
+            const url = urlInput ? urlInput.value.trim() : '';
+            if (!url) { status('❌ Введите ссылку на пост 4PDA', 'err'); return; }
+
+            // FIX: resetAll() removed intentionally.
+            // Previously calling resetAll() before parsing a second link wiped out all
+            // already-loaded books, resulting in total=0 / unique=0 in regenerateBB.
+            // Books are now merged and deduplicated inside addBook() instead.
+
+            if (!url.includes('4pda')) {
+                status('❌ Ссылка должна быть на пост 4PDA', 'err');
                 return;
             }
-            status('Парсинг поста...', 'inf');
-            document.getElementById('parseUrlLoader').style.display = 'block';
-            
-            if (window.AndroidBridge && window.AndroidBridge.parseForumPost) {
+            const loader = document.getElementById('parseUrlLoader');
+            if (loader) loader.style.display = 'inline-block';
+            status('⏳ Загружаю пост…', 'inf');
+            if (window.AndroidBridge && AndroidBridge.parseForumPost) {
                 AndroidBridge.parseForumPost(url);
             } else {
-                status('Парсинг доступен только в приложении', 'err');
-                document.getElementById('parseUrlLoader').style.display = 'none';
+                if (loader) loader.style.display = 'none';
+                status('❌ Функция недоступна в браузере (только в приложении)', 'err');
             }
         }
 
@@ -1793,7 +1768,6 @@
                 const data = JSON.parse(jsonStr);
                 status("✅ Пост успешно разобран!", "ok");
 
-                // Накатываем скачивания и автора
                 const applyPostData = () => {
                     if (books.length > 0) {
                         let author = (data.authorName || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1802,7 +1776,6 @@
                             author = `[url=${authorUrl}]${author}[/url]`;
                         }
 
-                        // Update currentBook if it exists to keep UI in sync
                         if (currentBook) {
                             currentBook.downloads = data.totalDownloads || 0;
                             currentBook.uploader = author;
@@ -1815,7 +1788,6 @@
                             b.uploader = author;
                             b.uploaderId = data.authorId || '';
                             b.originalPostUrl = document.getElementById('postUrlInput').value.trim();
-                            // If book title is too short or missing, try to use topic title
                             if (data.topicTitle && (!b.title || b.title === 'Без названия' || b.title.length < 3)) {
                                 b.title = data.topicTitle;
                             }
@@ -1874,11 +1846,9 @@
                         status("❌ Неизвестная ошибка: файл не получен", "err");
                     }
 
-                    // Если файла в посте нет, просто обновляем текущую книгу (метаданные)
                     if (books.length > 0) {
                         applyPostData();
                     } else {
-                        // Иначе инициализируем currentBook
                         if (!currentBook) currentBook = { genres: [] };
                         if (!currentBook.title || currentBook.title === 'Без названия') {
                             currentBook.title = data.topicTitle || '';
@@ -1891,16 +1861,10 @@
                         currentBook.uploader = author;
                         currentBook.uploaderId = data.authorId || '';
                         currentBook.originalPostUrl = document.getElementById('postUrlInput').value.trim();
-
                         updateCurrentBookUI();
                     }
 
                     document.getElementById('section-bbcode').style.display = 'block';
-
-                    if (data.totalDownloads > 0 || data.authorName) {
-                        // status(..., "ok");
-                    }
-
                     regenerateBB();
                 }
             } catch (e) {
@@ -1917,13 +1881,12 @@
         //  BB-CODE
         // ════════════════════════════════════════════════
         function regenerateBB() {
-            // 0. Deduplicate books
             const uniqueBooks = [];
             books.forEach(b => {
                 const norm = s => (s || '').toLowerCase().replace(/[._\-—–\s]+/g, ' ').trim();
-                const d = u => norm(u.author) === norm(b.author) && 
-                               norm(u.title) === norm(b.title) && 
-                               norm(u.series) === norm(b.series) && 
+                const d = u => norm(u.author) === norm(b.author) &&
+                               norm(u.title) === norm(b.title) &&
+                               norm(u.series) === norm(b.series) &&
                                norm(u.seriesNum) === norm(b.seriesNum);
                 if (!uniqueBooks.some(d)) uniqueBooks.push(b);
             });
@@ -1932,7 +1895,6 @@
 
             if (!uniqueBooks.length) { document.getElementById('bbArea').value = ''; return; }
 
-            // 1. Group books by Author + Series
             const groups = [];
             uniqueBooks.forEach(b => {
                 const key = (b.author || 'Unknown') + '|' + (b.series || '');
@@ -1947,22 +1909,18 @@
             let finalBB = '';
 
             groups.forEach(g => {
-                // Author (Red)
                 finalBB += `[COLOR=red][B]${g.author || 'Неизвестный автор'}[/B][/COLOR]\n`;
 
-                // Series Heading (Blue)
                 let seriesLine = '';
                 if (g.series) {
                     const nums = g.items.map(b => parseInt(b.seriesNum)).filter(n => !isNaN(n)).sort((a, b) => a - b);
                     const range = nums.length > 1 ? ` ${nums[0]}-${nums[nums.length - 1]}` : (nums.length === 1 ? ` ${nums[0]}` : '');
-                    
+
                     if (g.items.length === 1) {
                         const b = g.items[0];
-                        // Если названия книги и серии отличаются (регистронезависимо)
                         if (b.title && b.series && b.title.toLowerCase().trim() !== b.series.toLowerCase().trim()) {
                             seriesLine = `${b.title}. ${b.series}${b.seriesNum ? ' ' + b.seriesNum : ''}`;
                         } else {
-                            // Иначе просто название серии или книги
                             seriesLine = b.title || b.series || 'Без названия';
                         }
                     } else {
@@ -1971,30 +1929,30 @@
                 } else {
                     seriesLine = g.items[0].title || 'Без названия';
                 }
-                finalBB += `[B][COLOR=blue]${seriesLine}[/COLOR][/B]\n\n`;
+                finalBB += `[B][COLOR=blue]${seriesLine}[/COLOR][/B]\n`;
 
-                // Spoiler start
-                finalBB += `[SPOILER=Аннотация]\n`;
+                finalBB += `[SPOILER=Аннотация]`;
 
                 g.items.forEach((b, idx) => {
+                    if (idx > 0) finalBB += `\n\n`;
+                    else finalBB += `\n`;
+
                     if (g.items.length > 1) {
                         let itemTitle = b.title || 'Без названия';
                         if (b.series) {
-                            // Проверяем, не продублировано ли название серии в названии книги
                             const seriesTag = b.series.toLowerCase().trim();
                             const titleLower = itemTitle.toLowerCase();
                             if (!titleLower.includes(seriesTag)) {
                                 itemTitle = `${b.series}${b.seriesNum ? '-' + b.seriesNum : ''}. ${b.title}`;
                             }
                         }
-                        finalBB += `[b]${idx + 1}. ${itemTitle}[/b]\n`;
+                        const num = b.seriesNum || (idx + 1);
+                        finalBB += `[B]${num}. ${itemTitle}[/B]\n`;
                     }
-                    finalBB += `${(b.annotation || 'Добавить аннотацию').trim()}\n`;
+                    finalBB += `${(b.annotation || 'Добавить аннотацию').trim()}`;
                 });
 
-                finalBB += `[/SPOILER]\n\n`;
-                
-                // Classic Footer
+                finalBB += `\n[/SPOILER]\n`;
                 finalBB += `[url="ссылка на Книгохранилище"][i][b]Скачать из Книгохранилища[/b][/i][/url]\n\n`;
             });
 
@@ -2005,7 +1963,6 @@
         function copyBB() {
             const bb = document.getElementById('bbArea').value;
             if (!bb) { status('❌ BB-код пуст', 'err'); return; }
-            // Try AndroidBridge first, fallback to clipboard API
             if (window.AndroidBridge) {
                 AndroidBridge.copyToClipboard(bb);
             } else {
@@ -2019,7 +1976,7 @@
             if (bb.includes('"ссылка на Книгохранилище"')) {
                 bb = bb.replace('"ссылка на Книгохранилище"', url);
                 document.getElementById('bbArea').value = bb;
-                copyBB(); // Automatically copy the updated code
+                copyBB();
                 status('✅ Книга опубликована! Ссылка добавлена в BB-код.', 'ok');
             }
         };
@@ -2027,8 +1984,7 @@
         async function sendToForum() {
             const bb = document.getElementById('bbArea').value;
             if (!bb) { status('❌ Сначала загрузите книги', 'err'); return; }
-            
-            // Принудительная сортировка по номеру в серии
+
             books.sort((a,b) => {
                 const nA = parseInt(a.seriesNum) || 0;
                 const nB = parseInt(b.seriesNum) || 0;
@@ -2041,7 +1997,6 @@
                 return;
             }
 
-            // Build topic title and structured data
             let topicTitle = '';
             let bookData = {
                 bbcode: bb,
@@ -2056,9 +2011,7 @@
             if (books.length > 0) {
                 const b0 = books[0];
                 const author = (b0.author || 'Неизвестный автор').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
-                const authorSearchUrl = `https://4pda.to/forum/index.php?act=search&forums%5B%5D=218&subforums=1&source=all&sort=rel&result=posts&query=${encodeURIComponent(author)}`;
-                
-                // Находим наиболее подходящую серию (если есть разночтения)
+
                 let seriesName = '';
                 const seriesCounts = {};
                 books.forEach(b => {
@@ -2066,41 +2019,33 @@
                         seriesCounts[b.series] = (seriesCounts[b.series] || 0) + 1;
                     }
                 });
-                
+
                 const seriesFound = Object.keys(seriesCounts);
                 if (seriesFound.length > 0) {
-                    // Берем самую частую серию или просто первую найденную
                     seriesName = seriesFound.sort((a,b) => seriesCounts[b] - seriesCounts[a])[0];
                 }
 
                 bookData.author = author;
                 bookData.authorInfo = author;
-                
+
                 if (books.length === 1) {
                     const b = books[0];
                     if (seriesName) {
-                        // Случай 2: Одна книга в серии
-                        // "Название книги" в формате 'Имя книги. Имя серии номер книги в серии'
                         const fullTitle = `${b.title}. ${seriesName}${b.seriesNum ? ' ' + b.seriesNum : ''}`;
                         bookData.title = fullTitle;
                         topicTitle = `${author} - ${fullTitle}`;
-                        bookData.series = ""; // "Выкладываемые книги серии" не заполняется
+                        bookData.series = "";
                     } else {
-                        // Случай 1: Одна книга без серии
-                        // "Название книги" заполняет только Название
                         bookData.title = b.title || 'Без названия';
                         topicTitle = `${author} - ${bookData.title}`;
-                        bookData.series = ""; // "Выкладываемые книги серии" не заполняется
+                        bookData.series = "";
                     }
                 } else {
-                    // Случай 3: Несколько книг одной серии
                     if (seriesName) {
                         const nums = books.map(b => parseInt(b.seriesNum)).filter(n => !isNaN(n)).sort((a, b) => a - b);
                         const range = nums.length > 1 ? ` ${nums[0]}-${nums[nums.length - 1]}` : (nums.length === 1 ? ` ${nums[0]}` : '');
-                        // "Название книги" в формате 'Имя серии номера книг в серии'
                         bookData.title = `${seriesName}${range}`;
                         topicTitle = `${author} - ${seriesName}${range}`;
-                        // "Выкладываемые книги серии" заполняются названиями книг в порядке возрастания
                         bookData.series = books.map(b => b.title || 'Без названия').join('\n');
                     } else {
                         bookData.title = b0.title || 'Без названия';
@@ -2112,11 +2057,11 @@
                 bookData.genre = [...new Set(books.map(x => x.genre).filter(Boolean))].join(', ');
                 bookData.year = b0.year || '';
 
-                // Combined annotation list for multi-books
                 if (books.length > 1) {
                     bookData.annotation = books.map((b, idx) => {
                         const cleanAnnot = (b.annotation || 'Добавить аннотацию').replace(/[\r\n]+/g, ' ');
-                        return `[b]${idx + 1}. ${b.title || 'Без названия'}[/b]\n${cleanAnnot}`;
+                        const num = b.seriesNum || (idx + 1);
+                        return `[B]${num}. ${b.title || 'Без названия'}[/B]\n${cleanAnnot}`;
                     }).join('\n\n');
                 } else {
                     bookData.annotation = b0.annotation || '';
@@ -2129,26 +2074,23 @@
                 bookData.pages = b0.pages || '';
                 bookData.webLink = b0.webLink || '';
                 bookData.authors = b0.author || '';
-                // Collect covers sequentially (1.jpg, 2.jpg...)
                 bookData.coverFiles = [];
                 books.forEach((b, idx) => {
                     if (b.cover && b.cover.data) {
                         bookData.coverFiles.push({
                             data: b.cover.data,
                             mime: b.cover.mime || 'image/jpeg',
-                            name: `${idx + 1}.jpg`
+                            name: `${b.seriesNum || idx + 1}.jpg`
                         });
                     }
                 });
 
-                // Keep backward compatibility for single cover
                 if (bookData.coverFiles.length > 0) {
                     bookData.coverImageBase64 = bookData.coverFiles[0].data;
                     bookData.coverMime = bookData.coverFiles[0].mime;
                 }
 
                 bookData.downloads = b0.downloads || currentBook?.downloads || 0;
-                // Поле [15] формы ожидает URL-ссылку на профиль релизера
                 const uplId = b0.uploaderId || currentBook?.uploaderId || '';
                 if (uplId) {
                     bookData.uploader = `https://4pda.to/forum/index.php?showuser=${uplId}`;
@@ -2157,7 +2099,6 @@
                 }
                 bookData.originalPostUrl = b0.originalPostUrl || currentBook?.originalPostUrl || '';
 
-                // Stage each book file individually via bridge (avoids JS bridge size limit)
                 for (const b of books) {
                     try {
                         const fb2Content = b.originalFB2 || generateFB2(b);
@@ -2169,19 +2110,16 @@
 
                         if (window.AndroidBridge && AndroidBridge.stageBookFile) {
                             AndroidBridge.stageBookFile(fileName, zipBase64, 'application/octet-stream');
-                            await new Promise(r => setTimeout(r, 500)); // Increase delay for staging
+                            await new Promise(r => setTimeout(r, 500));
                         }
                     } catch (err) {
                         console.error('Ошибка упаковки отдельной книги:', err);
                     }
                 }
 
-                // topicTitle already calculated above in this version
-                bookData.topicTitle = topicTitle;
                 bookData.topicTitle = topicTitle;
             }
 
-            // Send metadata (without large base64 book data) via bridge
             if (window.AndroidBridge && AndroidBridge.sendBookDataToForum) {
                 AndroidBridge.sendBookDataToForum(JSON.stringify(bookData));
             } else if (window.AndroidBridge && AndroidBridge.sendBBCodeToForumWithTitle) {
@@ -2209,17 +2147,11 @@
                 const author = currentBook.author || '';
                 const surname = author.split(/[\s,]+/)[0] || '';
                 let titleActual = currentBook.title || '';
-
-                // Strip series indicators and EVERYTHING after them (ultra aggressive)
                 titleActual = titleActual.replace(/(Часть|Ч\.|Книга|Кн\.|Том|Т\.|Кн|Ч|Т)\s*\d+.*$/gi, '');
-
-                // Strip digits and trailing junk
                 titleActual = titleActual.replace(/\d+/g, '');
                 titleActual = titleActual.replace(/[:.,\-—\s]+$/, '').trim();
-
                 query = (surname + ' ' + titleActual).trim();
             } else if (query) {
-                // If query was passed (e.g. from q), still apply cleaning to be safe
                 query = query.replace(/(Часть|Ч\.|Книга|Кн\.|Том|Т\.|Кн|Ч|Т)\s*\d+.*$/gi, '');
                 query = query.replace(/\d+/g, '');
                 query = query.replace(/[:.,\-—\s]+$/, '').trim();
@@ -2227,7 +2159,6 @@
 
             if (!query) { status('❌ Введите название для поиска', 'err'); return; }
 
-            // Sync search input field
             const qInput = document.getElementById('searchQueryInput');
             if (qInput && !qInput.value) qInput.value = query;
             status('🔍 Поиск: ' + query + '…', 'inf');
@@ -2274,9 +2205,43 @@
             status('🚀 Запускаю массовую загрузку...', 'inf');
             for (let i = 0; i < books.length; i++) {
                 await downloadSingleBook(i);
-                await new Promise(r => setTimeout(r, 600)); // Delay to prevent bridge overlapping
+                await new Promise(r => setTimeout(r, 600));
             }
             status('✅ Завершена загрузка ' + books.length + ' книг', 'ok');
+        }
+
+        async function downloadAllCovers() {
+            const withCovers = books.filter(b => b.cover && b.cover.data);
+            if (!withCovers.length) { status('❌ Нет обложек для скачивания', 'err'); return; }
+            status('⏳ Подготовка архива обложек…', 'inf');
+            try {
+                const zip = new JSZip();
+                withCovers.forEach((b, idx) => {
+                    const numPrefix = b.seriesNum || (idx + 1);
+                    const authorPart = transliterate((b.author || '').split(/[\s,]+/)[0] || 'author');
+                    const fileName = `${numPrefix}_${authorPart}.jpg`;
+                    const byteChars = atob(b.cover.data);
+                    const byteArr = new Uint8Array(byteChars.length);
+                    for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+                    zip.file(fileName, byteArr);
+                });
+                const base64 = await zip.generateAsync({ type: 'base64', compression: 'DEFLATE' });
+                const authorSlug = transliterate((books[0]?.author || '').split(/[\s,]+/)[0] || 'covers');
+                const seriesSlug = books[0]?.series ? '_' + transliterate(books[0].series).substring(0, 30) : '';
+                const zipName = `${authorSlug}${seriesSlug}_covers.zip`;
+                if (window.AndroidBridge && AndroidBridge.saveFile) {
+                    AndroidBridge.saveFile(base64, zipName, 'application/zip');
+                    status('✅ Архив обложек сохранён: ' + zipName, 'ok');
+                } else {
+                    const link = document.createElement('a');
+                    link.href = 'data:application/zip;base64,' + base64;
+                    link.download = zipName;
+                    link.click();
+                    status('✅ Архив обложек скачивается', 'ok');
+                }
+            } catch(e) {
+                status('❌ Ошибка архивирования обложек: ' + e.message, 'err');
+            }
         }
 
         // ════════════════════════════════════════════════
@@ -2314,29 +2279,20 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
 </FictionBook>`;
         }
 
-        // ════════════════════════════════════════════════
         function sanitizeFileName(name) {
             if (!name) return 'book';
-            // Определяем расширение
             let lo = name.toLowerCase();
             let isDoubleExt = lo.endsWith('.fb2.zip');
             let ext = isDoubleExt ? '.fb2.zip' : (name.includes('.') ? name.substring(name.lastIndexOf('.')) : '');
             let base = isDoubleExt ? name.substring(0, name.length - 8) : (name.includes('.') ? name.substring(0, name.lastIndexOf('.')) : name);
-
-            // Транслитерация базы
             let cleaned = transliterate(base);
-            
-            // Финальная очистка от точеки тире (уже в transliterate, но для верности)
             cleaned = cleaned.replace(/[.\-—–\(\)\[\]\{\}\s]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-            
             return (cleaned || 'book') + ext;
         }
 
         function makeFilename(b) {
             const p = [];
             const clean = (s) => (s || '').replace(/[._\-—–\(\)\[\]\{\}\s]+/g, ' ').trim();
-            
-            // ПОРЯДОК: Автор_Серия_Номер_Название
             if (b.author) {
                 const parts = clean(b.author).split(/[\s,]+/);
                 if (parts.length > 0) p.push(parts[0]);
@@ -2344,11 +2300,9 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
             if (b.series) p.push(clean(b.series));
             if (b.seriesNum) p.push(clean(b.seriesNum));
             if (b.title) p.push(clean(b.title));
-            
             let base = p.join('_').substring(0, 150) || 'book';
             return transliterate(base);
         }
-
 
         function transliterate(t) {
             const map = {
@@ -2365,7 +2319,8 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
             if (field === 'annotation' && books.length > 1) {
                 v = books.map((b, idx) => {
                     const cleanAnnot = (b.annotation || 'Добавить аннотацию').replace(/[\r\n]+/g, ' ');
-                    return `[b]${idx + 1}. ${b.title || 'Без названия'}[/b]\n${cleanAnnot}`;
+                    const num = b.seriesNum || (idx + 1);
+                    return `[B]${num}. ${b.title || 'Без названия'}[/B]\n${cleanAnnot}`;
                 }).join('\n\n');
             }
             if (window.AndroidBridge) AndroidBridge.copyToClipboard(v);
@@ -2377,10 +2332,8 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
             const d = document.createElement('div'); d.textContent = t; return d.innerHTML;
         }
 
-
-
         // ════════════════════════════════════════════════
-        //  INTEGRATED SEARCH (v30)
+        //  INTEGRATED SEARCH
         // ════════════════════════════════════════════════
         function norm(s) {
             return (s || '')
@@ -2432,7 +2385,6 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
             return score;
         }
 
-        // This will be called from Android
         window.onSearchFinished = function (resultsJson) {
             try {
                 const rawResults = typeof resultsJson === 'string' ? JSON.parse(resultsJson) : resultsJson;
@@ -2487,7 +2439,6 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
             }
         }
 
-        // Open forum topic via bridge or fallback
         function openForumTopic(url) {
             if (window.AndroidBridge && AndroidBridge.openForumUrl) {
                 AndroidBridge.openForumUrl(url);
@@ -2525,35 +2476,6 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
             actionLog(msg, type);
         }
 
-        // ════════════════════════════════════════════════
-        //  PARSE POST URL (4PDA link)
-        // ════════════════════════════════════════════════
-        function parsePostUrl() {
-            const urlInput = document.getElementById('postUrlInput');
-            const url = urlInput ? urlInput.value.trim() : '';
-            if (!url) { status('❌ Введите ссылку на пост 4PDA', 'err'); return; }
-            
-            // Clear existing books to avoid duplicates and mixing old state
-            resetAll();
-            
-            if (!url.includes('4pda')) {
-                status('❌ Ссылка должна быть на пост 4PDA', 'err');
-                return;
-            }
-            const loader = document.getElementById('parseUrlLoader');
-            if (loader) loader.style.display = 'inline-block';
-            status('⏳ Загружаю пост…', 'inf');
-            if (window.AndroidBridge && AndroidBridge.parseForumPost) {
-                AndroidBridge.parseForumPost(url);
-            } else {
-                if (loader) loader.style.display = 'none';
-                status('❌ Функция недоступна в браузере (только в приложении)', 'err');
-            }
-        }
-
-
-
-        // Open first parsed file in translator
         function openParsedInTranslator() {
             const files = window._parsedFiles;
             if (!files || files.length === 0) { status('❌ Нет файлов для открытия', 'err'); return; }
@@ -2565,14 +2487,12 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
             }
         }
 
-        // Parse first file back into the main books list
         async function parseOnMain() {
             const files = (window._parsedFiles || []).slice().reverse();
             if (!files || files.length === 0) { status('❌ Нет файлов для разбора', 'err'); return; }
             status('⏳ Разбираю книгу…', 'inf');
             for (const f of files) {
                 try {
-                    // Convert base64 to Blob, then to File
                     const byteChars = atob(f.fileBase64);
                     const byteArr = new Uint8Array(byteChars.length);
                     for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
@@ -2585,7 +2505,6 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
             }
         }
 
-        // Called by Kotlin if parsing failed
         window.onPostParseError = function(msg) {
             const loader = document.getElementById('parseUrlLoader');
             if (loader) loader.style.display = 'none';

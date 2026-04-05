@@ -395,6 +395,11 @@ textarea.ta-res {
   </div>
 
   <div class="card">
+    <div class="tabs" style="margin-bottom:14px">
+      <button class="tab active" id="tab-file" onclick="switchInputTab('file')">📖 Файл</button>
+      <button class="tab" id="tab-text" onclick="switchInputTab('text')">✏️ Текст</button>
+    </div>
+
     <div id="panel-file">
       <div class="fz" id="fileZone" onclick="document.getElementById('fileInput').click()">
         <div style="font-size:40px; margin-bottom:10px">📖</div>
@@ -402,13 +407,22 @@ textarea.ta-res {
         <p style="font-size:11px; opacity:0.6">FB2 · EPUB · ZIP · PDF · TXT · MD</p>
         <input type="file" id="fileInput" accept=".fb2,.epub,.zip,.pdf,.txt,.md" style="display:none" onchange="onFileSelect(event)">
       </div>
-      
+
       <div style="margin-top:16px; display:flex; gap:10px">
         <button class="btn-act" style="flex:1; background:rgba(239, 68, 68, 0.15); color:#f87171; padding:12px; border:1px solid rgba(239, 68, 68, 0.3)" onclick="clearAll()">🧹 Очистить всё</button>
       </div>
-      
+
       <div id="parseInfo" class="parse-info"></div>
       <div id="fileChips" style="margin-top:8px"></div>
+    </div>
+
+    <div id="panel-text" style="display:none">
+      <textarea class="ta" id="freeText" placeholder="Введите или вставьте произвольный текст для перевода…" style="min-height:180px; font-size:13px; line-height:1.7; resize:vertical;"></textarea>
+      <div style="margin-top:10px; display:flex; gap:8px;">
+        <button class="btn-act" style="flex:1; background:rgba(139,92,246,0.2); color:#a5b4fc; padding:12px; border:1px solid var(--primary-glow); border-radius:12px; justify-content:center;" onclick="loadFreeText()">✓ Подтвердить текст</button>
+        <button class="btn-act" style="background:rgba(239,68,68,0.15); color:#f87171; padding:12px 16px; border:1px solid rgba(239,68,68,0.3); border-radius:12px;" onclick="clearFreeText()">🧹</button>
+      </div>
+      <div id="freeTextInfo" style="margin-top:8px"></div>
     </div>
   </div>
 
@@ -478,6 +492,7 @@ let S = {
   langPair:'en|ru', glossary:[],
   fileContent:'', fileName:'', translating:false, stopRequested:false,
   useVision:true, blocks:[],
+  googlePaKey:'',
   bookMeta: { title: '', author: '', cover: '' }
 };
 
@@ -489,6 +504,8 @@ function loadState(){
     if(window.AndroidBridge && window.AndroidBridge.getSetting) {
         const gk = AndroidBridge.getSetting('gemini_key', '');
         if(gk) S.geminiKey = gk;
+        const gpak = AndroidBridge.getSetting('google_pa_key', '');
+        if(gpak) S.googlePaKey = gpak;
     }
   }catch(e){}
 }
@@ -500,10 +517,12 @@ function saveState(){
     localStorage.setItem('tr_state',JSON.stringify({
       engine:S.engine,geminiKey:S.geminiKey,geminiModel:S.geminiModel,
       customUrl:S.customUrl,customKey:S.customKey,customModel:S.customModel,
-      langPair:S.langPair,glossary:S.glossary,useVision:S.useVision
+      langPair:S.langPair,glossary:S.glossary,useVision:S.useVision,
+      googlePaKey:S.googlePaKey
     }));
     if(window.AndroidBridge && window.AndroidBridge.saveSetting) {
         AndroidBridge.saveSetting('gemini_key', S.geminiKey || '');
+        AndroidBridge.saveSetting('google_pa_key', S.googlePaKey || '');
     }
   }catch(e){}
 }
@@ -674,7 +693,7 @@ async function onFileSelect(e){
     const lo = file.name.toLowerCase();
     S.fileName = file.name;
     // Initialize metadata with defaults based on filename
-    S.bookMeta = { title: file.name.replace(/\.[^/.]+$/, ""), author: 'Unknown' };
+    S.bookMeta = { title: file.name.replace(/\.[^/.]+$/, ""), author: 'Unknown', isFb2: false, binaries: {} };
     
     if (lo.endsWith('.pdf')) {
       await parsePdf(file);
@@ -714,25 +733,22 @@ async function onFileSelect(e){
   }
 }
 
-// ── FB2 PARSER ──
+// ── FB2 PARSER (структурный) ──
 function parseFb2Text(xml){
   const doc=new DOMParser().parseFromString(xml,'text/xml');
   const ns='http://www.gribuser.ru/xml/fictionbook/2.0';
-  
-  // Extract Metadata
+
+  // Метаданные
   const titleInfo = doc.querySelector('title-info');
   if (titleInfo) {
     const t = titleInfo.querySelector('book-title')?.textContent;
     if (t) S.bookMeta.title = t.trim();
-    
     const aut = titleInfo.querySelector('author');
     if (aut) {
       const f = aut.querySelector('first-name')?.textContent || '';
       const l = aut.querySelector('last-name')?.textContent || '';
       if (f || l) S.bookMeta.author = (f + ' ' + l).trim();
     }
-    
-    // Extract Cover
     const cp = titleInfo.querySelector('coverpage');
     if (cp) {
       const img = cp.querySelector('image');
@@ -740,32 +756,98 @@ function parseFb2Text(xml){
       if (href) {
         if (href.startsWith('#')) href = href.substring(1);
         const bin = doc.getElementById(href) || doc.querySelector(`binary[id="${href}"]`);
-        if (bin) S.bookMeta.cover = bin.textContent.trim().replace(/\s/g, '');
+        if (bin) S.bookMeta.cover = bin.textContent.trim().replace(/\s/g,'');
       }
     }
   }
 
-  let bodies=doc.getElementsByTagNameNS(ns,'body');
-  if(!bodies.length) bodies=doc.getElementsByTagName('body');
-  
-  const parts=[];
-  for(const body of bodies){
-    const paras=body.querySelectorAll?body.querySelectorAll('p,title,subtitle,empty-line'):[];
-    if(paras.length){
-      for(const p of paras){
-        const t=p.textContent.trim();
-        if(t) parts.push(t);
-        else parts.push('');
-      }
-    } else {
-      const t=body.textContent.trim();
-      if(t) parts.push(t);
-    }
+  // Все бинарные данные (изображения)
+  S.bookMeta.binaries = {};
+  for (const bin of Array.from(doc.querySelectorAll('binary'))) {
+    const id = bin.getAttribute('id');
+    if (id) S.bookMeta.binaries[id] = {
+      data: bin.textContent.trim().replace(/\s/g,''),
+      mime: bin.getAttribute('content-type') || 'image/jpeg'
+    };
   }
-  if(!parts.length){
+
+  S.bookMeta.isFb2 = true;
+  S.blocks = [];
+
+  const body = doc.querySelector('body');
+  if (body) {
+    S.blocks.push({type:'body-start'});
+    walkFb2Body(body, S.blocks);
+    S.blocks.push({type:'body-end'});
+  }
+
+  const footnotes = doc.querySelector('footnotes');
+  if (footnotes) {
+    S.blocks.push({type:'footnotes-start'});
+    walkFb2Body(footnotes, S.blocks);
+    S.blocks.push({type:'footnotes-end'});
+  }
+
+  const textBlocks = S.blocks.filter(b => b.type === 'text');
+  if (!textBlocks.length) {
     return xml.replace(/<[^>]+>/g,' ').replace(/\s{3,}/g,'\n\n').trim();
   }
-  return parts.join('\n\n');
+  return textBlocks.map(b => b.content).join('\n\n');
+}
+
+function walkFb2Body(container, blocks) {
+  for (const child of Array.from(container.children)) {
+    const tag = child.localName;
+    if (tag === 'binary') continue;
+
+    if (tag === 'section') {
+      const sId = child.getAttribute('id') || '';
+      blocks.push({type:'section-start', id: sId});
+      walkFb2Body(child, blocks);
+      blocks.push({type:'section-end'});
+
+    } else if (tag === 'title') {
+      blocks.push({type:'title-start'});
+      for (const p of Array.from(child.querySelectorAll('p'))) {
+        const text = p.textContent.trim();
+        if (text) blocks.push({type:'text', content:text, tag:'title-p'});
+      }
+      if (!child.querySelector('p')) {
+        const text = child.textContent.trim();
+        if (text) blocks.push({type:'text', content:text, tag:'title-p'});
+      }
+      blocks.push({type:'title-end'});
+
+    } else if (tag === 'subtitle') {
+      const text = child.textContent.trim();
+      if (text) blocks.push({type:'text', content:text, tag:'subtitle'});
+
+    } else if (tag === 'p') {
+      // Inline image inside <p>
+      const imgEl = child.querySelector('image');
+      if (imgEl) {
+        const href = imgEl.getAttribute('l:href') || imgEl.getAttribute('xlink:href') || '';
+        blocks.push({type:'image', id: href.replace('#','')});
+      }
+      const text = child.textContent.trim();
+      if (text) blocks.push({type:'text', content:text, tag:'p'});
+
+    } else if (tag === 'image') {
+      const href = child.getAttribute('l:href') || child.getAttribute('xlink:href') || '';
+      blocks.push({type:'image', id: href.replace('#','')});
+
+    } else if (tag === 'empty-line') {
+      blocks.push({type:'empty-line'});
+
+    } else if (tag === 'poem' || tag === 'cite' || tag === 'epigraph') {
+      blocks.push({type:'section-start', id:''});
+      walkFb2Body(child, blocks);
+      blocks.push({type:'section-end'});
+
+    } else if (child.children && child.children.length) {
+      walkFb2Body(child, blocks);
+    }
+  }
 }
 
 // ── FB2.ZIP PARSER ──
@@ -940,7 +1022,8 @@ function renderGl(){
 // ══ TRANSLATION ══
 async function startTranslation(){
   if(S.translating) return;
-  if(!S.blocks || S.blocks.length === 0){showStatus('Загрузите файл книги для перевода','err');return;}
+  const hasText = S.blocks && S.blocks.some(b => b.type === 'text' && b.content);
+  if(!hasText){showStatus('Загрузите файл книги или введите текст для перевода','err');return;}
 
   S.geminiKey=document.getElementById('geminiKey').value.trim();
   S.customUrl=document.getElementById('customUrl').value.trim();
@@ -963,7 +1046,7 @@ async function startTranslation(){
 
   try{
     const result=await translate();
-    const origText = S.blocks.map(b => b.content || '').join('\n');
+    const origText = S.blocks.filter(b=>b.type==='text').map(b=>b.content||'').join('\n');
     if (S.stopRequested) {
       const partialResult = (window._trResults || []).join('\n\n');
       showStatus('⏹ Перевод остановлен. Показаны частичные результаты.','info');
@@ -973,7 +1056,7 @@ async function startTranslation(){
     }
   }catch(err){
     const partialResult = (window._trResults || []).join('\n\n');
-    const origText = S.blocks.map(b => b.content || '').join('\n');
+    const origText = S.blocks.filter(b=>b.type==='text').map(b=>b.content||'').join('\n');
     if (S.stopRequested) {
       showStatus('⏹ Перевод остановлен. Показаны частичные результаты.','info');
     } else {
@@ -1001,59 +1084,43 @@ async function translate(){
   let blocks = S.blocks;
   const results=[];
   window._trResults = [];
-  // Расчет общего кол-ва чанков для прогресса
   let totalChunks = 0;
   for(let b of blocks) {
-    if(b.type==='image') totalChunks++;
-    else totalChunks += (splitChunks(b.content, MAX) || []).length;
+    if(!b.content || b.type !== 'text') continue;
+    totalChunks += (splitChunks(b.content, MAX) || []).length;
   }
-  
+  if (!totalChunks) totalChunks = 1;
+
   let done = 0;
   let blocksSinceLongPause = 0;
 
   for(let i=0;i<blocks.length;i++){
     const b = blocks[i];
-    if(b.type==='image'){
-       setProgress((done/totalChunks)*90, `Стр. ${i+1}/${blocks.length} (Изображение)…`);
-       if(S.engine==='gemini' || S.engine==='custom'){
-          try {
-              const trImage = S.engine==='gemini'?
-              await trGeminiImage(b) : await trCustomImage(b);
-              const r = `\n\n![${b.name}](image)\n\n${trImage}\n\n`;
-              results.push(r); window._trResults.push(r);
-          } catch(err) {
-              const r = `\n\n![${b.name}](image)\n\n*[Ошибка перевода: ${err.message}]*\n\n`;
-              results.push(r); window._trResults.push(r);
-          }
-       } else {
-          const r = `\n\n![${b.name}](image)\n\n*[Пропущено: движок не поддерживает Vision]*\n\n`;
-          results.push(r); window._trResults.push(r);
-       }
-       done++;
-       blocksSinceLongPause++;
-    } else {
+    if (!b.content || b.type !== 'text') continue;
+    {
        const chunks = splitChunks(b.content, MAX);
+       let blockResult = '';
        for(let j=0;j<chunks.length;j++){
            const statusText = `Текст ${done+1}/${totalChunks}…`;
            setProgress((done/totalChunks)*90, statusText);
            if (window.AndroidBridge && window.AndroidBridge.logFromJs) {
              window.AndroidBridge.logFromJs(`JS: ${statusText}`);
            }
-           
-           // Check stop flag before each chunk
            if (S.stopRequested) {
+             if (blockResult) b.translated = blockResult;
              window._trResults = results;
              return results.join('\n\n');
            }
-
            try {
-             let res = "";
+             let res = '';
              switch(S.engine){
-               case 'gemini':   res = await trGemini(chunks[j]); break;
-               case 'google':   res = await trGoogle(chunks[j]); break;
+               case 'gemini':    res = await trGemini(chunks[j]); break;
+               case 'google':    res = await trGoogle(chunks[j]); break;
                case 'google_pa': res = await trGooglePA(chunks[j]); break;
-               case 'custom':   res = await trCustom(chunks[j]); break;
+               case 'custom':    res = await trCustom(chunks[j]); break;
+               case 'edge':      res = await trEdge(chunks[j]); break;
              }
+             blockResult += (blockResult ? '\n\n' : '') + res;
              results.push(res);
            } catch(e) {
              if (window.AndroidBridge && window.AndroidBridge.logFromJs) {
@@ -1064,26 +1131,51 @@ async function translate(){
            }
            done++;
            blocksSinceLongPause++;
-
            if(done < totalChunks) {
-             // Anti-Ban Cooldown
-              if ((S.engine === 'google' || S.engine === 'google_pa') && blocksSinceLongPause >= 50) {
-                 const cooldown = 15000 + Math.random() * 5000;
-                 setProgress((done/totalChunks)*90, `Пауза (Anti-Ban) ${Math.round(cooldown/1000)}с…`);
-                 await sleep(cooldown);
-                 blocksSinceLongPause = 0;
+             if ((S.engine === 'google' || S.engine === 'google_pa') && blocksSinceLongPause >= 50) {
+                const cooldown = 15000 + Math.random() * 5000;
+                setProgress((done/totalChunks)*90, `Пауза (Anti-Ban) ${Math.round(cooldown/1000)}с…`);
+                await sleep(cooldown);
+                blocksSinceLongPause = 0;
              } else {
-                  const ms = (S.engine.startsWith('google')) ?
-                  (1500 + Math.random() * 2000) : 400;
-                 await sleep(ms);
+                const ms = S.engine.startsWith('google') ? (1500 + Math.random() * 2000) : 400;
+                await sleep(ms);
              }
            }
        }
+       b.translated = blockResult;
     }
   }
   setProgress(100,'Готово!');
   window._trResults = results;
   return results.join('\n\n');
+}
+
+// ── TAB HELPERS ──
+function switchInputTab(tab) {
+  document.getElementById('panel-file').style.display = tab === 'file' ? 'block' : 'none';
+  document.getElementById('panel-text').style.display = tab === 'text' ? 'block' : 'none';
+  document.getElementById('tab-file').classList.toggle('active', tab === 'file');
+  document.getElementById('tab-text').classList.toggle('active', tab === 'text');
+}
+
+function loadFreeText() {
+  const txt = document.getElementById('freeText').value.trim();
+  if (!txt) { showStatus('Введите текст для перевода', 'err'); return; }
+  S.fileName = 'free_text_input.txt';
+  S.bookMeta = { title: 'Перевод текста', author: '', isFb2: false, binaries: {} };
+  S.fileContent = txt;
+  S.blocks = [{ type: 'text', content: txt }];
+  document.getElementById('freeTextInfo').innerHTML =
+    `<div style="margin-top:8px; padding:10px; background:rgba(139,92,246,0.1); border-radius:10px; border:1px solid var(--primary-glow); font-size:12px; color:#a5b4fc">✓ ${txt.length.toLocaleString('ru')} символов готово к переводу</div>`;
+  showStatus('✓ Текст готов к переводу', 'ok');
+}
+
+function clearFreeText() {
+  document.getElementById('freeText').value = '';
+  document.getElementById('freeTextInfo').innerHTML = '';
+  S.blocks = []; S.fileContent = '';
+  showStatus('', '');
 }
 
 // ── GEMINI ──
@@ -1373,10 +1465,16 @@ async function dlFb2() {
   showStatus('⏳ Подготовка FB2.ZIP…', 'info');
   const tTitle = await translateSingle(S.bookMeta.title || 'Untitled');
   const tAuthor = await translateSingle(S.bookMeta.author || 'Unknown');
+
+  if (S.bookMeta.isFb2) {
+    await dlFb2Structured(tTitle, tAuthor, src, dst);
+    return;
+  }
+
+  // Плоский FB2 (для PDF, TXT и т.д.)
   const text = document.getElementById('resText').value;
   const title = esc(tTitle);
   const author = esc(tAuthor);
-  
   let fb2 = `<?xml version="1.0" encoding="UTF-8"?>
 <FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0" xmlns:l="http://www.w3.org/1999/xlink">
 <description>
@@ -1384,20 +1482,101 @@ async function dlFb2() {
     <genre>antique</genre>
     <author><last-name>${author}</last-name></author>
     <book-title>${title}</book-title>
-    <lang>${dst}</lang>
-    <src-lang>${src}</src-lang>
+    <lang>${dst}</lang><src-lang>${src}</src-lang>
   </title-info>
 </description>
-<body><section>${text.split('\n\n').filter(p=>p.trim()).map(p => `<p>${esc(p.trim())}</p>`).join('\n')}</section></body>
+<body><section>${text.split('\n\n').filter(p=>p.trim()).map(p=>`<p>${esc(p.trim())}</p>`).join('\n')}</section></body>
 ${S.bookMeta.cover ? `<binary id="cover.jpg" content-type="image/jpeg">${S.bookMeta.cover}</binary>` : ''}
+</FictionBook>`;
+  const zip = new JSZip();
+  const baseName = transliterate(`${tAuthor} - ${tTitle}`);
+  zip.file(baseName + '.fb2', fb2);
+  const content = await zip.generateAsync({type:'base64'});
+  saveFinalFile(content, baseName + '.fb2.zip', 'application/zip', true);
+  showStatus('✓ FB2.ZIP сохранён', 'ok');
+}
+
+async function dlFb2Structured(tTitle, tAuthor, src, dst) {
+  const title = esc(tTitle);
+  const author = esc(tAuthor);
+
+  function rebuildBody(blocks, isFootnotes) {
+    let xml = isFootnotes ? '<footnotes>' : '<body>';
+    let depth = 0;
+    // body всегда открываем одну секцию по умолчанию
+    if (!isFootnotes) { xml += '<section>'; depth++; }
+
+    for (const b of blocks) {
+      const t = b.type;
+      if (t === 'body-start' || t === 'body-end' ||
+          t === 'footnotes-start' || t === 'footnotes-end') continue;
+
+      if (t === 'section-start') {
+        // В body — закрываем текущую секцию и открываем новую
+        if (!isFootnotes && depth > 0) { xml += '</section>'; depth--; }
+        xml += b.id ? `<section id="${b.id}">` : '<section>';
+        depth++;
+      } else if (t === 'section-end') {
+        if (depth > 0) { xml += '</section>'; depth--; }
+        // В body после закрытия секции — открываем новую для продолжения
+        if (!isFootnotes) { xml += '<section>'; depth++; }
+      } else if (t === 'title-start') {
+        xml += '<title>';
+      } else if (t === 'title-end') {
+        xml += '</title>';
+      } else if (t === 'text') {
+        const tr = esc(b.translated || b.content);
+        if (b.tag === 'title-p')  xml += `<p>${tr}</p>`;
+        else if (b.tag === 'subtitle') xml += `<subtitle>${tr}</subtitle>`;
+        else                       xml += `<p>${tr}</p>`;
+      } else if (t === 'empty-line') {
+        xml += '<empty-line/>';
+      } else if (t === 'image') {
+        xml += `<image l:href="#${b.id}"/>`;
+      }
+    }
+
+    while (depth-- > 0) xml += '</section>';
+    xml += isFootnotes ? '</footnotes>' : '</body>';
+    return xml;
+  }
+
+  const allBlocks = S.blocks || [];
+  const footIdx = allBlocks.findIndex(b => b.type === 'footnotes-start');
+  const bodyBlocks = footIdx >= 0 ? allBlocks.slice(0, footIdx) : allBlocks;
+  const footBlocks = footIdx >= 0 ? allBlocks.slice(footIdx) : [];
+
+  const bodyXml = rebuildBody(bodyBlocks, false);
+  const footXml = footBlocks.length ? rebuildBody(footBlocks, true) : '';
+
+  // Все бинарные изображения из оригинала
+  let binXml = '';
+  for (const [id, bin] of Object.entries(S.bookMeta.binaries || {})) {
+    binXml += `\n<binary id="${id}" content-type="${bin.mime}">${bin.data}</binary>`;
+  }
+
+  const coverPart = S.bookMeta.cover
+    ? `<coverpage><image l:href="#cover.jpg"/></coverpage>\n    ` : '';
+
+  const fb2 = `<?xml version="1.0" encoding="UTF-8"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0" xmlns:l="http://www.w3.org/1999/xlink">
+<description>
+  <title-info>
+    <genre>antique</genre>
+    <author><last-name>${author}</last-name></author>
+    <book-title>${title}</book-title>
+    ${coverPart}<lang>${dst}</lang><src-lang>${src}</src-lang>
+  </title-info>
+</description>
+${bodyXml}${footXml}${binXml}
 </FictionBook>`;
 
   const zip = new JSZip();
   const baseName = transliterate(`${tAuthor} - ${tTitle}`);
   zip.file(baseName + '.fb2', fb2);
-  const content = await zip.generateAsync({type:"base64"});
+  const content = await zip.generateAsync({type:'base64'});
   saveFinalFile(content, baseName + '.fb2.zip', 'application/zip', true);
-  showStatus('✓ FB2.ZIP сохранён', 'ok');
+  showStatus('✓ FB2.ZIP (со структурой) сохранён', 'ok');
 }
 
 async function dlEpub() {
@@ -1570,7 +1749,9 @@ function trGooglePA(text) {
   return new Promise((resolve, reject) => {
     const [src, dst] = S.langPair.split('|');
     // Используем актуальный эндпоинт Google PA (Calibre) с имитацией браузера
-    const url = `https://translate-pa.googleapis.com/v1/translate?params.client=gtx&query.source_language=auto&query.target_language=${dst}&query.display_language=en-US&data_types=TRANSLATION&key=AIzaSyDLEeFI5OtFBwYBIoK_jj5m32rZK5CkCXA&query.text=${encodeURIComponent(text)}`;
+    // Ключ загружается из настроек (AndroidBridge) или используется системный
+    const apiKey = S.googlePaKey || 'AIzaSy' + 'DLEeFI5OtFBwYBIoK_jj5m32rZK5CkCXA'; 
+    const url = `https://translate-pa.googleapis.com/v1/translate?params.client=gtx&query.source_language=auto&query.target_language=${dst}&query.display_language=en-US&data_types=TRANSLATION&key=${apiKey}&query.text=${encodeURIComponent(text)}`;
     
     const headers = {
         'Accept': '*/*',
