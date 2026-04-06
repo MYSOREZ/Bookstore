@@ -493,7 +493,9 @@ let S = {
   fileContent:'', fileName:'', translating:false, stopRequested:false,
   useVision:true, blocks:[],
   googlePaKey:'',
-  bookMeta: { title: '', author: '', cover: '' }
+  bookMeta: { title: '', author: '', cover: '' },
+  fb2Doc: null,
+  epubData: null
 };
 
 function loadState(){
@@ -699,10 +701,39 @@ async function onFileSelect(e){
       await parsePdf(file);
     } else {
       let txt = '';
-      if (lo.endsWith('.fb2')) txt = parseFb2Text(await file.text());
+      if (lo.endsWith('.fb2')) {
+        const buf = await file.arrayBuffer();
+        const u8 = new Uint8Array(buf);
+        const head = new TextDecoder('ascii').decode(u8.slice(0, 300));
+        const enc = /encoding=["'](windows-1251|cp1251)/i.test(head) ? 'windows-1251' : 'utf-8';
+        txt = parseFb2Text(new TextDecoder(enc, {fatal: false}).decode(u8));
+      }
       else if (lo.endsWith('.epub')) txt = await parseEpub(file);
       else if (lo.endsWith('.zip')) txt = await parseFb2Zip(file);
-      else txt = await file.text();
+      else {
+        const buf = await file.arrayBuffer();
+        const u8 = new Uint8Array(buf);
+        const textU8 = new TextDecoder('utf-8').decode(u8);
+        if (textU8.includes('\uFFFD')) {
+          const textCp1251 = new TextDecoder('windows-1251').decode(u8);
+          let textCp866 = '';
+          try { textCp866 = new TextDecoder('ibm866').decode(u8); } catch(e) {}
+          let textKoi8 = '';
+          try { textKoi8 = new TextDecoder('koi8-r').decode(u8); } catch(e) {}
+
+          const cyrCount = (t) => (t?.match(/[А-Яа-яЁё]/g) || []).length;
+          const scores = [
+            { t: textCp1251, s: cyrCount(textCp1251) },
+            { t: textCp866, s: cyrCount(textCp866) },
+            { t: textKoi8, s: cyrCount(textKoi8) },
+            { t: textU8, s: cyrCount(textU8) }
+          ].sort((a,b) => b.s - a.s);
+
+          txt = scores[0].t;
+        } else {
+          txt = textU8;
+        }
+      }
       S.fileContent = txt;
       // If parser didn't create blocks, create a default one
       if (!S.blocks || S.blocks.length === 0) {
@@ -734,11 +765,43 @@ async function onFileSelect(e){
 }
 
 // ── FB2 PARSER (структурный) ──
-function parseFb2Text(xml){
-  const doc=new DOMParser().parseFromString(xml,'text/xml');
-  const ns='http://www.gribuser.ru/xml/fictionbook/2.0';
+window._protectMap = {};
+window._protectId = 0;
 
-  // Метаданные
+function protectHTML(xmlStr) {
+   if (!xmlStr) return "";
+   return xmlStr.replace(/<(img|image|hr|br|empty-line|svg|canvas|binary)([^>]*?)>/gi, (match) => {
+       const key = `[[TG_${window._protectId++}]]`;
+       window._protectMap[key] = match;
+       return key;
+   });
+}
+
+function restoreHTML(trStr) {
+   if (!trStr) return "";
+   let res = trStr;
+   for (const key in window._protectMap) {
+       const rRegex = new RegExp(`\\[\\[\\s*TG_${key.match(/\d+/)[0]}\\s*\\]\\]`, 'gi');
+       res = res.replace(rRegex, window._protectMap[key]);
+   }
+   return res;
+}
+
+function extractBlocks(doc, selectors) {
+    const elements = Array.from(doc.querySelectorAll(selectors));
+    return elements.filter(el => {
+        const hasInnerBlock = Array.from(el.querySelectorAll(selectors)).length > 0;
+        return !hasInnerBlock && el.innerHTML.trim().length > 0;
+    });
+}
+
+function parseFb2Text(xml){
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  S.fb2Doc = doc;
+  S.epubData = null;
+  S.bookMeta.isFb2 = true;
+  S.blocks = [];
+  
   const titleInfo = doc.querySelector('title-info');
   if (titleInfo) {
     const t = titleInfo.querySelector('book-title')?.textContent;
@@ -749,105 +812,22 @@ function parseFb2Text(xml){
       const l = aut.querySelector('last-name')?.textContent || '';
       if (f || l) S.bookMeta.author = (f + ' ' + l).trim();
     }
-    const cp = titleInfo.querySelector('coverpage');
-    if (cp) {
-      const img = cp.querySelector('image');
-      let href = img?.getAttribute('l:href') || img?.getAttribute('xlink:href');
-      if (href) {
-        if (href.startsWith('#')) href = href.substring(1);
-        const bin = doc.getElementById(href) || doc.querySelector(`binary[id="${href}"]`);
-        if (bin) S.bookMeta.cover = bin.textContent.trim().replace(/\s/g,'');
-      }
-    }
   }
-
-  // Все бинарные данные (изображения)
-  S.bookMeta.binaries = {};
+  
   for (const bin of Array.from(doc.querySelectorAll('binary'))) {
-    const id = bin.getAttribute('id');
-    if (id) S.bookMeta.binaries[id] = {
-      data: bin.textContent.trim().replace(/\s/g,''),
-      mime: bin.getAttribute('content-type') || 'image/jpeg'
-    };
-  }
-
-  S.bookMeta.isFb2 = true;
-  S.blocks = [];
-
-  const body = doc.querySelector('body');
-  if (body) {
-    S.blocks.push({type:'body-start'});
-    walkFb2Body(body, S.blocks);
-    S.blocks.push({type:'body-end'});
-  }
-
-  const footnotes = doc.querySelector('footnotes');
-  if (footnotes) {
-    S.blocks.push({type:'footnotes-start'});
-    walkFb2Body(footnotes, S.blocks);
-    S.blocks.push({type:'footnotes-end'});
-  }
-
-  const textBlocks = S.blocks.filter(b => b.type === 'text');
-  if (!textBlocks.length) {
-    return xml.replace(/<[^>]+>/g,' ').replace(/\s{3,}/g,'\n\n').trim();
-  }
-  return textBlocks.map(b => b.content).join('\n\n');
-}
-
-function walkFb2Body(container, blocks) {
-  for (const child of Array.from(container.children)) {
-    const tag = child.localName;
-    if (tag === 'binary') continue;
-
-    if (tag === 'section') {
-      const sId = child.getAttribute('id') || '';
-      blocks.push({type:'section-start', id: sId});
-      walkFb2Body(child, blocks);
-      blocks.push({type:'section-end'});
-
-    } else if (tag === 'title') {
-      blocks.push({type:'title-start'});
-      for (const p of Array.from(child.querySelectorAll('p'))) {
-        const text = p.textContent.trim();
-        if (text) blocks.push({type:'text', content:text, tag:'title-p'});
-      }
-      if (!child.querySelector('p')) {
-        const text = child.textContent.trim();
-        if (text) blocks.push({type:'text', content:text, tag:'title-p'});
-      }
-      blocks.push({type:'title-end'});
-
-    } else if (tag === 'subtitle') {
-      const text = child.textContent.trim();
-      if (text) blocks.push({type:'text', content:text, tag:'subtitle'});
-
-    } else if (tag === 'p') {
-      // Inline image inside <p>
-      const imgEl = child.querySelector('image');
-      if (imgEl) {
-        const href = imgEl.getAttribute('l:href') || imgEl.getAttribute('xlink:href') || '';
-        blocks.push({type:'image', id: href.replace('#','')});
-      }
-      const text = child.textContent.trim();
-      if (text) blocks.push({type:'text', content:text, tag:'p'});
-
-    } else if (tag === 'image') {
-      const href = child.getAttribute('l:href') || child.getAttribute('xlink:href') || '';
-      blocks.push({type:'image', id: href.replace('#','')});
-
-    } else if (tag === 'empty-line') {
-      blocks.push({type:'empty-line'});
-
-    } else if (tag === 'poem' || tag === 'cite' || tag === 'epigraph') {
-      blocks.push({type:'section-start', id:''});
-      walkFb2Body(child, blocks);
-      blocks.push({type:'section-end'});
-
-    } else if (child.children && child.children.length) {
-      walkFb2Body(child, blocks);
+    const mime = bin.getAttribute('content-type') || 'image/jpeg';
+    if (!S.bookMeta.cover && mime.includes('image')) {
+      S.bookMeta.cover = bin.textContent.trim().replace(/\s/g,'');
     }
   }
+
+  const fb2Selectors = ['p', 'subtitle', 'text-author', 'v', 'th', 'td', 'annotation'];
+  const leafBlocks = extractBlocks(doc, fb2Selectors.join(', '));
+  for (const el of leafBlocks) {
+      S.blocks.push({ type: 'text', content: protectHTML(el.innerHTML), node: el });
+  }
+  
+  return S.blocks.map(b => b.content).join('\n\n');
 }
 
 // ── FB2.ZIP PARSER ──
@@ -865,6 +845,10 @@ async function parseFb2Zip(file){
 // ── EPUB PARSER ──
 async function parseEpub(file){
   const zip=await JSZip.loadAsync(file);
+  S.epubData = { zip: zip, docs: {} };
+  S.fb2Doc = null;
+  S.blocks = [];
+  
   const containerXml=await zip.file('META-INF/container.xml')?.async('text');
   if(!containerXml) throw new Error('EPUB: container.xml не найден');
   const cDoc=new DOMParser().parseFromString(containerXml,'text/xml');
@@ -882,20 +866,27 @@ async function parseEpub(file){
     };
   }
   const spineIds=[...opfDoc.querySelectorAll('spine itemref')].map(i=>i.getAttribute('idref'));
-  const chapters=[];
+  
+  const epubSelectors = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'th', 'td', 'blockquote', 'figcaption'].join(', ');
   for(const id of spineIds){
     const item=manifest[id];
     if(!item||(item.type&&!item.type.includes('html')&&!item.type.includes('xhtml'))) continue;
     const chPath=opfDir?(opfDir+'/'+item.href):item.href;
     const html=await zip.file(chPath)?.async('text');
     if(!html) continue;
-    const hDoc=new DOMParser().parseFromString(html,'text/html');
-    hDoc.querySelectorAll('script,style').forEach(n=>n.remove());
-    const txt=hDoc.body?.innerText||hDoc.body?.textContent||'';
-    if(txt.trim()) chapters.push(txt.trim());
+    
+    let hDoc=new DOMParser().parseFromString(html, item.type.includes('xhtml') ? 'application/xhtml+xml' : 'text/html');
+    if (hDoc.querySelector('parsererror')) {
+        hDoc=new DOMParser().parseFromString(html, 'text/html');
+    }
+    S.epubData.docs[chPath] = hDoc;
+    
+    const leafBlocks = extractBlocks(hDoc, epubSelectors);
+    for (const el of leafBlocks) {
+        S.blocks.push({ type: 'text', content: protectHTML(el.innerHTML), node: el, file: chPath });
+    }
   }
   
-  // Extract Cover
   try {
     const coverItem = opfDoc.querySelector('meta[name="cover"]');
     let coverId = coverItem?.getAttribute('content');
@@ -903,7 +894,6 @@ async function parseEpub(file){
     if (coverId) {
         coverHref = manifest[coverId]?.href;
     } else {
-        // Fallback: look for item with "cover" in ID or href
         const fallback = Object.keys(manifest).find(k => k.toLowerCase().includes('cover') || manifest[k].href.toLowerCase().includes('cover'));
         if (fallback) coverHref = manifest[fallback].href;
     }
@@ -918,8 +908,8 @@ async function parseEpub(file){
     }
   } catch(e) { console.warn("Epub Cover Extract Error", e); }
   
-  if(!chapters.length) throw new Error('EPUB: не удалось извлечь текст');
-  return chapters.join('\n\n---\n\n');
+  if(!S.blocks.length) return "Не найдено текстовых блоков";
+  return S.blocks.map(b => b.content).join('\n\n');
 }
 
 
@@ -950,8 +940,12 @@ function clearAll(){
   S.fileName = '';
   S.blocks = [];
   S.bookMeta = { title:'', author:'', cover:'' };
+  S.fb2Doc = null;
+  S.epubData = null;
   window._parsedFiles = null;
   window._trResults = [];
+  window._protectMap = {};
+  window._protectId = 0;
 
   // Reset file input
   const fi = document.getElementById('fileInput');
@@ -1460,28 +1454,44 @@ async function parsePdf(file) {
   }
 }
 
+
 async function dlFb2() {
   const [src, dst] = S.langPair.split('|');
   showStatus('⏳ Подготовка FB2.ZIP…', 'info');
   const tTitle = await translateSingle(S.bookMeta.title || 'Untitled');
   const tAuthor = await translateSingle(S.bookMeta.author || 'Unknown');
-
-  if (S.bookMeta.isFb2) {
-    await dlFb2Structured(tTitle, tAuthor, src, dst);
-    return;
+  const baseName = transliterate(`${tAuthor} - ${tTitle}`);
+  
+  if (S.fb2Doc) {
+      const titleInfo = S.fb2Doc.querySelector('title-info');
+      if (titleInfo) {
+          const bt = titleInfo.querySelector('book-title');
+          if (bt) bt.textContent = tTitle;
+      }
+      for (const b of S.blocks) {
+          if (b.type === 'text' && b.translated) {
+              b.node.innerHTML = restoreHTML(b.translated);
+          }
+      }
+      const s = new XMLSerializer();
+      const fb2Str = s.serializeToString(S.fb2Doc);
+      const zip = new JSZip();
+      zip.file(baseName + '.fb2', fb2Str);
+      const content = await zip.generateAsync({type:'base64'});
+      saveFinalFile(content, baseName + '.fb2.zip', 'application/zip', true);
+      showStatus('✓ ОРИГИНАЛЬНЫЙ FB2.ZIP сохранён', 'ok');
+      return;
   }
-
-  // Плоский FB2 (для PDF, TXT и т.д.)
+  
+  // Плоский FB2 (для PDF, TXT)
   const text = document.getElementById('resText').value;
-  const title = esc(tTitle);
-  const author = esc(tAuthor);
   let fb2 = `<?xml version="1.0" encoding="UTF-8"?>
 <FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0" xmlns:l="http://www.w3.org/1999/xlink">
 <description>
   <title-info>
     <genre>antique</genre>
-    <author><last-name>${author}</last-name></author>
-    <book-title>${title}</book-title>
+    <author><last-name>${esc(tAuthor)}</last-name></author>
+    <book-title>${esc(tTitle)}</book-title>
     <lang>${dst}</lang><src-lang>${src}</src-lang>
   </title-info>
 </description>
@@ -1489,94 +1499,10 @@ async function dlFb2() {
 ${S.bookMeta.cover ? `<binary id="cover.jpg" content-type="image/jpeg">${S.bookMeta.cover}</binary>` : ''}
 </FictionBook>`;
   const zip = new JSZip();
-  const baseName = transliterate(`${tAuthor} - ${tTitle}`);
   zip.file(baseName + '.fb2', fb2);
   const content = await zip.generateAsync({type:'base64'});
   saveFinalFile(content, baseName + '.fb2.zip', 'application/zip', true);
-  showStatus('✓ FB2.ZIP сохранён', 'ok');
-}
-
-async function dlFb2Structured(tTitle, tAuthor, src, dst) {
-  const title = esc(tTitle);
-  const author = esc(tAuthor);
-
-  function rebuildBody(blocks, isFootnotes) {
-    let xml = isFootnotes ? '<footnotes>' : '<body>';
-    let depth = 0;
-    // body всегда открываем одну секцию по умолчанию
-    if (!isFootnotes) { xml += '<section>'; depth++; }
-
-    for (const b of blocks) {
-      const t = b.type;
-      if (t === 'body-start' || t === 'body-end' ||
-          t === 'footnotes-start' || t === 'footnotes-end') continue;
-
-      if (t === 'section-start') {
-        // В body — закрываем текущую секцию и открываем новую
-        if (!isFootnotes && depth > 0) { xml += '</section>'; depth--; }
-        xml += b.id ? `<section id="${b.id}">` : '<section>';
-        depth++;
-      } else if (t === 'section-end') {
-        if (depth > 0) { xml += '</section>'; depth--; }
-        // В body после закрытия секции — открываем новую для продолжения
-        if (!isFootnotes) { xml += '<section>'; depth++; }
-      } else if (t === 'title-start') {
-        xml += '<title>';
-      } else if (t === 'title-end') {
-        xml += '</title>';
-      } else if (t === 'text') {
-        const tr = esc(b.translated || b.content);
-        if (b.tag === 'title-p')  xml += `<p>${tr}</p>`;
-        else if (b.tag === 'subtitle') xml += `<subtitle>${tr}</subtitle>`;
-        else                       xml += `<p>${tr}</p>`;
-      } else if (t === 'empty-line') {
-        xml += '<empty-line/>';
-      } else if (t === 'image') {
-        xml += `<image l:href="#${b.id}"/>`;
-      }
-    }
-
-    while (depth-- > 0) xml += '</section>';
-    xml += isFootnotes ? '</footnotes>' : '</body>';
-    return xml;
-  }
-
-  const allBlocks = S.blocks || [];
-  const footIdx = allBlocks.findIndex(b => b.type === 'footnotes-start');
-  const bodyBlocks = footIdx >= 0 ? allBlocks.slice(0, footIdx) : allBlocks;
-  const footBlocks = footIdx >= 0 ? allBlocks.slice(footIdx) : [];
-
-  const bodyXml = rebuildBody(bodyBlocks, false);
-  const footXml = footBlocks.length ? rebuildBody(footBlocks, true) : '';
-
-  // Все бинарные изображения из оригинала
-  let binXml = '';
-  for (const [id, bin] of Object.entries(S.bookMeta.binaries || {})) {
-    binXml += `\n<binary id="${id}" content-type="${bin.mime}">${bin.data}</binary>`;
-  }
-
-  const coverPart = S.bookMeta.cover
-    ? `<coverpage><image l:href="#cover.jpg"/></coverpage>\n    ` : '';
-
-  const fb2 = `<?xml version="1.0" encoding="UTF-8"?>
-<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0" xmlns:l="http://www.w3.org/1999/xlink">
-<description>
-  <title-info>
-    <genre>antique</genre>
-    <author><last-name>${author}</last-name></author>
-    <book-title>${title}</book-title>
-    ${coverPart}<lang>${dst}</lang><src-lang>${src}</src-lang>
-  </title-info>
-</description>
-${bodyXml}${footXml}${binXml}
-</FictionBook>`;
-
-  const zip = new JSZip();
-  const baseName = transliterate(`${tAuthor} - ${tTitle}`);
-  zip.file(baseName + '.fb2', fb2);
-  const content = await zip.generateAsync({type:'base64'});
-  saveFinalFile(content, baseName + '.fb2.zip', 'application/zip', true);
-  showStatus('✓ FB2.ZIP (со структурой) сохранён', 'ok');
+  showStatus('✓ Базовый FB2.ZIP сохранён', 'ok');
 }
 
 async function dlEpub() {
@@ -1584,14 +1510,31 @@ async function dlEpub() {
   showStatus('⏳ Подготовка EPUB…', 'info');
   const tTitle = await translateSingle(S.bookMeta.title || 'Untitled');
   const tAuthor = await translateSingle(S.bookMeta.author || 'Unknown');
+  const baseName = transliterate(`${tAuthor} - ${tTitle}`);
+  
+  if (S.epubData) {
+      for (const b of S.blocks) {
+          if (b.type === 'text' && b.translated) {
+              b.node.innerHTML = restoreHTML(b.translated);
+          }
+      }
+      const s = new XMLSerializer();
+      for (const chPath in S.epubData.docs) {
+          const docStr = s.serializeToString(S.epubData.docs[chPath]);
+          S.epubData.zip.file(chPath, docStr);
+      }
+      const content = await S.epubData.zip.generateAsync({type:'base64'});
+      saveFinalFile(content, baseName + '.epub', 'application/epub+zip', true);
+      showStatus('✓ ОРИГИНАЛЬНЫЙ EPUB сохранён', 'ok');
+      return;
+  }
+  
   const text = document.getElementById('resText').value;
   const title = esc(tTitle);
   const author = esc(tAuthor);
-  
   const zip = new JSZip();
   zip.file('mimetype', 'application/epub+zip');
   zip.file('META-INF/container.xml', `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`);
-  
   let opf = `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="pub-id" version="2.0">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
@@ -1607,7 +1550,6 @@ async function dlEpub() {
   </manifest>
   <spine toc="ncx"><itemref id="text"/></spine>
 </package>`;
-  
   zip.folder('OEBPS').file('content.opf', opf);
   zip.folder('OEBPS').file('toc.ncx', `<?xml version="1.0" encoding="UTF-8"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta name="dtb:uid" content="uid"/></head><docTitle><text>${title}</text></docTitle><navMap><navPoint id="nav" playOrder="1"><navLabel><text>Start</text></navLabel><content src="text.xhtml"/></navPoint></navMap></ncx>`);
   const html = `<?xml version="1.0" encoding="UTF-8"?>
@@ -1615,16 +1557,13 @@ async function dlEpub() {
 <html xmlns="http://www.w3.org/1999/xhtml"><head><title>${title}</title></head><body>
 ${text.split('\n\n').filter(p=>p.trim()).map(p => `<p>${esc(p.trim())}</p>`).join('\n')}
 </body></html>`;
-  
   zip.folder('OEBPS').file('text.xhtml', html);
-if (S.bookMeta.cover) {
-  zip.folder('OEBPS').folder('images').file('cover.jpg', S.bookMeta.cover, {base64: true});
-}
-  
+  if (S.bookMeta.cover) {
+    zip.folder('OEBPS').folder('images').file('cover.jpg', S.bookMeta.cover, {base64: true});
+  }
   const content = await zip.generateAsync({type:"base64"});
-  const baseName = transliterate(`${author} - ${title}`);
   saveFinalFile(content, baseName + '.epub', 'application/epub+zip', true);
-  showStatus('✓ EPUB сохранён', 'ok');
+  showStatus('✓ Базовый EPUB сохранён', 'ok');
 }
 
 async function translateSingle(text) {
