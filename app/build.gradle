@@ -14,18 +14,68 @@ android {
         applicationId "com.bookparser.app"
         minSdk 26
         targetSdk 34
-        versionCode 2
-        versionName "6.0"
+        versionCode 3
+        versionName "7.0"
         
         vectorDrawables { 
             useSupportLibrary = true
         }
     }
 
+    signingConfigs {
+        release {
+            storeFile file(RELEASE_STORE_FILE)
+            storePassword RELEASE_STORE_PASSWORD
+            keyAlias RELEASE_KEY_ALIAS
+            keyPassword RELEASE_KEY_PASSWORD
+        }
+    }
+
     buildTypes {
         release {
-            minifyEnabled false
+            signingConfig signingConfigs.release
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    applicationVariants.all { variant ->
+        if (variant.buildType.name == 'release') {
+            def obfuscateTask = tasks.register("obfuscateHtmlAssets${variant.name.capitalize()}") {
+                doLast {
+                    def assetsDir = file("${buildDir}/intermediates/assets/${variant.name}/merge${variant.name.capitalize()}Assets")
+                    if (!assetsDir.exists()) {
+                        assetsDir = file("${buildDir}/intermediates/merged_assets/${variant.name}/out")
+                    }
+                    
+                    if (assetsDir.exists()) {
+                        fileTree(assetsDir).matching {
+                            include "**/*.html"
+                        }.each { file ->
+                            println "Obfuscating HTML: ${file.name}"
+                            def content = file.getText("UTF-8")
+                            
+                            // 1. Простая минимизация (удаление комментариев и лишних пробелов)
+                            content = content.replaceAll(/<!--[\s\S]*?-->/, "")
+                            content = content.replaceAll(/>\s+</, "><")
+                            content = content.trim()
+                            
+                            // 2. Обфускация через Base64
+                            def base64 = content.bytes.encodeBase64().toString()
+                            def wrapper = """<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>
+                                document.write(decodeURIComponent(escape(window.atob('${base64}'))));
+                            </script></body></html>"""
+                            
+                            file.write(wrapper, "UTF-8")
+                        }
+                    }
+                }
+            }
+            
+            variant.mergeAssetsProvider.configure {
+                finalizedBy obfuscateTask
+            }
         }
     }
 

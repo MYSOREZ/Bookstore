@@ -1,7 +1,6 @@
 package com.bookparser.app
 
 import android.content.Context
-import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
@@ -53,13 +52,10 @@ class FileRemovalManager(private val context: Context) {
     
             val response = client.newCall(request).execute()
             val responseBody = response.body?.string()
-    
-            Log.d("FileRemovalManager", "Remove response (index=$index, id=$fileId): $responseBody")
-    
+
             response.isSuccessful
-    
+
         } catch (e: Exception) {
-            Log.e("FileRemovalManager", "Error removing file (index=$index, id=$fileId): ${e.message}", e)
             false
         }
     }

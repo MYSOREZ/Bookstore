@@ -39,15 +39,12 @@ class FileUploadManager(private val context: Context) {
     suspend fun uploadFile(uri: Uri, cookies: String, authKey: String, index: Int): UploadResult? =
         withContext(Dispatchers.IO) {
             try {
-                AppLogger.d(TAG, "=== Начало загрузки файла ===")
-                AppLogger.d(TAG, "URI: $uri, Index: $index")
 
                 val file = convertUriToFile(uri, context)
                 val fileName = file.name
                 val fileSize = file.length()
                 val md5 = calculateMD5(file)
 
-                AppLogger.d(TAG, "Файл: $fileName, Размер: $fileSize bytes, MD5: $md5")
 
                 val allowExtMap = mapOf(
                     1 to "jpg,jpeg,gif,png,webp",
@@ -55,21 +52,15 @@ class FileUploadManager(private val context: Context) {
                 )
                 val allowExt = allowExtMap[index] ?: "jpg,jpeg,gif,png,webp"
 
-                AppLogger.d(TAG, "Шаг 1: Проверка файла (code=check)")
                 val checkResult = checkFile(fileName, fileSize, md5, cookies, authKey, index, allowExt)
                 if (!checkResult) {
-                    AppLogger.e(TAG, "Ошибка проверки файла")
                     return@withContext null
                 }
-                AppLogger.d(TAG, "✓ Проверка успешна")
 
-                AppLogger.d(TAG, "Шаг 2: Загрузка бинарного файла (code=upload)")
                 val uploadResponse = uploadBinaryFile(file, cookies, authKey, index, allowExt)
                 if (uploadResponse.isNullOrEmpty()) {
-                    AppLogger.e(TAG, "Ошибка загрузки файла")
                     return@withContext null
                 }
-                AppLogger.d(TAG, "✓ Загрузка успешна: $uploadResponse")
 
                 // Ответ сервера: поля разделены \u0002 (STX), группы \u0003/\u0004
                 // Первое поле — числовой ID файла
@@ -77,17 +68,14 @@ class FileUploadManager(private val context: Context) {
                     .split(Regex("[\\x02\\x03\\x04 ]"))
                     .firstOrNull { it.isNotEmpty() }
                     ?.trim() ?: ""
-                AppLogger.d(TAG, "Parsed fileId: '$fileId' from response")
                 UploadResult(success = true, response = fileId)
 
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Ошибка загрузки файла: ${e.message}", e)
                 null
             }
         }
 
     private fun convertUriToFile(uri: Uri, context: Context): File {
-        AppLogger.d(TAG, "Конвертация URI в File...")
 
         // Если URI указывает на файл в нашем cache через FileProvider — возвращаем напрямую
         if (uri.authority == "${context.packageName}.fileprovider") {
@@ -96,7 +84,6 @@ class FileUploadManager(private val context: Context) {
             val cacheFile = File(context.cacheDir, fileName)
 
             if (cacheFile.exists() && cacheFile.length() > 0) {
-                AppLogger.d(TAG, "Файл найден в cache: ${cacheFile.absolutePath}, размер: ${cacheFile.length()}")
                 return cacheFile
             } else {
                 throw IOException("Файл в cache не найден или пустой: ${cacheFile.absolutePath}")
@@ -116,7 +103,6 @@ class FileUploadManager(private val context: Context) {
             }
         }
 
-        AppLogger.d(TAG, "Файл создан: ${tempFile.absolutePath}, размер: ${tempFile.length()}")
         return tempFile
     }
 
@@ -161,7 +147,6 @@ class FileUploadManager(private val context: Context) {
         index: Int,
         allowExt: String
     ): Boolean {
-        AppLogger.d(TAG, "Отправка check-запроса... (allowExt: $allowExt)")
 
         val requestBody = FormBody.Builder()
             .add("code", "check")
@@ -189,13 +174,10 @@ class FileUploadManager(private val context: Context) {
         val response = client.newCall(request).execute()
         val responseBody = response.body?.string() ?: ""
 
-        AppLogger.d(TAG, "Check Response code: ${response.code}")
-        AppLogger.d(TAG, "Check Response body: $responseBody")
 
         // 4PDA returns JSON: {"result":"ok"} or {"result":"error","reason":"..."}
         if (!response.isSuccessful) return false
         if (responseBody.contains("\"error\"") && !responseBody.contains("\"ok\"")) {
-            AppLogger.e(TAG, "Check rejected by server: $responseBody")
             return false
         }
         return true
@@ -208,7 +190,6 @@ class FileUploadManager(private val context: Context) {
         index: Int,
         allowExt: String
     ): String? {
-        AppLogger.d(TAG, "Отправка upload-запроса (${file.length()} bytes, allowExt: $allowExt)...")
 
         val requestBody = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
@@ -239,8 +220,6 @@ class FileUploadManager(private val context: Context) {
         val response = client.newCall(request).execute()
         val responseBody = response.body?.string() ?: ""
 
-        AppLogger.d(TAG, "Upload Response code: ${response.code}")
-        AppLogger.d(TAG, "Upload Response body: $responseBody")
 
         return if (response.isSuccessful) responseBody else null
     }

@@ -153,7 +153,6 @@ class Parser_FB2(private val context: Context) {
             )
     
         } catch (e: Exception) {
-            Log.e("Parser_FB2", "Ошибка парсинга FB2: ${e.message}", e)
             throw Exception("Не удалось прочитать метаданные из FB2: ${e.message}")
         }
     }

@@ -16,7 +16,7 @@ class GenreMapper(private val context: Context) {
             val jsonString = context.assets.open("genreMappings.json").bufferedReader().use { it.readText() }
             Json.decodeFromString<Map<String, String>>(jsonString)
         } catch (ioException: IOException) {
-            ioException.printStackTrace()
+            // Error silently handled
             emptyMap()
         }
     }

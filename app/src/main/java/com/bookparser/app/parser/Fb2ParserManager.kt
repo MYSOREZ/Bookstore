@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
-import android.util.Log
 import androidx.core.content.FileProvider
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -13,9 +12,8 @@ import java.io.File
 class Fb2ParserManager(private val context: Context) {
 
     companion object {
-        private const val TAG = "Fb2ParserManager"
     }
-    
+
     private val fb2Parser = Parser_FB2(context)
     private val biographyParser = BiographyParser(context)
     
@@ -37,9 +35,7 @@ class Fb2ParserManager(private val context: Context) {
         val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
         val source = prefs.getString("biography_source", BiographyParser.SOURCE_WIKIPEDIA)
             ?: BiographyParser.SOURCE_WIKIPEDIA
-    
-        Log.d(TAG, "Источник биографии: $source")
-    
+
         return biographyParser.getBiography(authorName, source, bookTitle, bookGenre)
     }
     
@@ -50,15 +46,13 @@ class Fb2ParserManager(private val context: Context) {
         return try {
             val decodedBytes = Base64.decode(base64String, Base64.DEFAULT)
             val bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
-    
+
             if (bitmap != null) {
                 compressCover(bitmap)
             } else {
-                Log.w(TAG, "Не удалось декодировать обложку из Base64")
                 null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Ошибка декодирования обложки: ${e.message}", e)
             null
         }
     }
@@ -85,13 +79,11 @@ class Fb2ParserManager(private val context: Context) {
     
         // Масштабируем изображение
         val resized = Bitmap.createScaledBitmap(original, newWidth, newHeight, true)
-    
+
         // Сжимаем в JPEG с качеством 85%
         // (Note: This step in memory doesn't affect Bitmap object size directly but helpful if written to stream.
         // The created bitmap is raw pixel data.)
-        
-        Log.d(TAG, "Обложка масштабирована: ${newWidth}x$newHeight")
-    
+
         return resized
     }
     
@@ -104,9 +96,7 @@ class Fb2ParserManager(private val context: Context) {
         tempFile.outputStream().use { out ->
             bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
         }
-    
-        Log.d(TAG, "Обложка сохранена во временный файл: ${tempFile.absolutePath}")
-    
+
         return FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",

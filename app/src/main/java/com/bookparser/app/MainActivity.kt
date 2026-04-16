@@ -26,6 +26,7 @@ import androidx.lifecycle.lifecycleScope
 import com.bookparser.app.processing.BookMetadata
 import com.bookparser.app.parser.GenreMapping
 import com.bookparser.app.web.WebDomAutomation
+import com.bookparser.app.web.EncryptedWebViewClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -158,7 +159,7 @@ class MainActivity : AppCompatActivity() {
             allowContentAccess = true
         }
         webViewParser.addJavascriptInterface(ParserJsInterface(), "AndroidBridge")
-        webViewParser.webViewClient = WebViewClient()
+        webViewParser.webViewClient = EncryptedWebViewClient(this)
 
         // Enable file upload via <input type="file">
         webViewParser.webChromeClient = object : WebChromeClient() {
@@ -173,7 +174,6 @@ class MainActivity : AppCompatActivity() {
                     fileChooserLauncher.launch(arrayOf("*/*"))
                 } catch (e: Exception) {
                     fileUploadCallback = null
-                    AppLogger.e(TAG, "File chooser error: ${e.message}")
                     return false
                 }
                 return true
@@ -216,7 +216,6 @@ class MainActivity : AppCompatActivity() {
                     fileChooserLauncher.launch(arrayOf("*/*"))
                 } catch (e: Exception) {
                     fileUploadCallback = null
-                    AppLogger.e(TAG, "File chooser error: ${e.message}")
                     return false
                 }
                 return true
@@ -226,7 +225,6 @@ class MainActivity : AppCompatActivity() {
         webViewForum.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                AppLogger.d(TAG, "Forum page loaded: $url")
 
                 // Handle search results
                 if (url != null && url.contains("act=search") && pendingSearchQuery != null) {
@@ -258,7 +256,6 @@ class MainActivity : AppCompatActivity() {
                             return 'fields_not_found';
                         })()
                     """.trimIndent()) { result ->
-                        AppLogger.d(TAG, "Login form result: $result")
                         // Начинаем polling кук сразу после submit — не ждём onPageFinished
                         if (result?.contains("submitted") == true) {
                             pollForLoginCookie(savedUser)
@@ -270,14 +267,12 @@ class MainActivity : AppCompatActivity() {
                 if (isWaitingForLogin && url != null && !url.contains("act=auth") && !url.contains("act=login")) {
                     val cookies = CookieManager.getInstance().getCookie(DOMAIN)
                     if (cookies != null && cookies.contains("member_id")) {
-                        AppLogger.d(TAG, "Login detected via onPageFinished")
                         completeLogin()
                     }
                 }
 
                 // Handle post-publication redirect to the new topic
                 if (isPublishing && url != null && url.contains("showtopic=")) {
-                    AppLogger.d(TAG, "New topic published: $url")
                     isPublishing = false
                     val cleanUrl = url.split("&").firstOrNull { it.contains("showtopic=") } ?: url
                     parserCallback("if(window.onBookPublished) window.onBookPublished('${cleanUrl.escapeJs()}');")
@@ -303,7 +298,7 @@ class MainActivity : AppCompatActivity() {
             allowContentAccess = true
         }
         webViewTranslator.addJavascriptInterface(ParserJsInterface(), "AndroidBridge")
-        webViewTranslator.webViewClient = object : WebViewClient() {
+        webViewTranslator.webViewClient = object : EncryptedWebViewClient(this) {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
             }
@@ -320,14 +315,12 @@ class MainActivity : AppCompatActivity() {
                     fileChooserLauncher.launch(arrayOf("*/*"))
                 } catch (e: Exception) {
                     fileUploadCallback = null
-                    AppLogger.e(TAG, "File chooser error: ${e.message}")
                     return false
                 }
                 return true
             }
 
             override fun onConsoleMessage(cm: android.webkit.ConsoleMessage?): Boolean {
-                AppLogger.d("JS_BRIDGE", "JS: ${cm?.message()}")
                 return true
             }
         }
@@ -341,8 +334,6 @@ class MainActivity : AppCompatActivity() {
             domStorageEnabled = true
         }
         webViewGeminiAuth.addJavascriptInterface(object {
-            @android.webkit.JavascriptInterface
-            fun logFromJs(msg: String) { AppLogger.d("JS_BRIDGE", "JS: $msg") }
             @android.webkit.JavascriptInterface
             fun onAutoExtractedKey(key: String) {
                 runOnUiThread {
@@ -450,7 +441,6 @@ class MainActivity : AppCompatActivity() {
         fun check() {
             val cookies = CookieManager.getInstance().getCookie(DOMAIN)
             if (cookies != null && cookies.contains("member_id")) {
-                AppLogger.d(TAG, "Login detected via cookie polling (attempt $attempts)")
                 completeLogin()
             } else if (++attempts < 30) { // max 9 seconds
                 handler.postDelayed(::check, 300)
@@ -480,7 +470,6 @@ class MainActivity : AppCompatActivity() {
             if (memberCookie != null) {
                 val username = getSavedUsername() ?: "User"
                 parserCallback("window.onAuthStateChanged(true, '${username.escapeJs()}')")
-                AppLogger.d(TAG, "Restored login session for: $username")
                 webViewForum.loadUrl(URL_NEW_TOPIC)
             }
         }
@@ -541,7 +530,6 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 if (url.contains("act=auth") || url.contains("act=login")) {
                     isWaitingForLogin = true
-                    AppLogger.d(TAG, "openForumUrl: auth page detected, isWaitingForLogin=true")
                 }
                 showForumWebView()
                 webViewForum.loadUrl(url)
@@ -562,10 +550,8 @@ class MainActivity : AppCompatActivity() {
                 try {
                     val encoded = java.net.URLEncoder.encode(query, "windows-1251")
                     val searchUrl = URL_SEARCH_BASE + encoded
-                    AppLogger.d(TAG, "Searching forum: $searchUrl")
                     webViewForum.loadUrl(searchUrl)
                 } catch (e: Exception) {
-                    AppLogger.e(TAG, "Encoding error", e)
                 }
             }
         }
@@ -575,7 +561,6 @@ class MainActivity : AppCompatActivity() {
         @android.webkit.JavascriptInterface
         fun loginToForum(username: String, password: String) {
             runOnUiThread {
-                AppLogger.d(TAG, "Login attempt for: $username")
                 isWaitingForLogin = true
                 pendingLoginUsername = username
                 pendingLoginPassword = password
@@ -591,7 +576,6 @@ class MainActivity : AppCompatActivity() {
                 clearCookies()
                 parserCallback("window.onAuthStateChanged(false, '')")
                 Toast.makeText(this@MainActivity, "Выход выполнен", Toast.LENGTH_SHORT).show()
-                AppLogger.d(TAG, "Logged out")
             }
         }
 
@@ -599,7 +583,6 @@ class MainActivity : AppCompatActivity() {
         fun openTranslator() {
             runOnUiThread {
                 showTranslatorWebView()
-                AppLogger.d(TAG, "openTranslator: Switching to translator tab")
             }
         }
 
@@ -633,7 +616,6 @@ class MainActivity : AppCompatActivity() {
                 isGeminiAuthMode = false
                 showTranslatorWebView()
                 translatorCallback("window.onGeminiKeyReceived('$key')")
-                AppLogger.d("GEMINI_SCRAPER", "Key restored to translator")
             }
         }
 
@@ -641,7 +623,6 @@ class MainActivity : AppCompatActivity() {
         fun saveSetting(key: String, value: String) {
             val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             prefs.edit().putString(key, value).apply()
-            AppLogger.d(TAG, "Setting saved: $key")
         }
 
         @android.webkit.JavascriptInterface
@@ -661,7 +642,6 @@ class MainActivity : AppCompatActivity() {
         @android.webkit.JavascriptInterface
         fun nativeRequest(url: String, method: String, body: String, headersJson: String, callbackJsId: String) {
             lifecycleScope.launch(Dispatchers.IO) {
-                AppLogger.d("NATIVE_FETCH", "Start $method request: $url")
                 try {
                     val client = okhttp3.OkHttpClient.Builder()
                         .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -687,14 +667,12 @@ class MainActivity : AppCompatActivity() {
                     val respBody = response.body?.string() ?: ""
                     
                     if (response.isSuccessful) {
-                        AppLogger.d("NATIVE_FETCH", "Success! Result length: ${respBody.length}")
                         val b64 = android.util.Base64.encodeToString(respBody.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
                         runOnUiThread {
                             translatorCallback("window.onNativeResponse('$callbackJsId', null, '$b64')")
                         }
                     } else {
                         val err = "HTTP ${response.code}: $respBody"
-                        AppLogger.e("NATIVE_FETCH", "Failed: $err")
                         val b64Err = android.util.Base64.encodeToString(err.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
                         runOnUiThread {
                             translatorCallback("window.onNativeResponse('$callbackJsId', '$b64Err', null)")
@@ -702,7 +680,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 } catch (e: Exception) {
                     val err = e.message ?: "Unknown error"
-                    AppLogger.e("NATIVE_FETCH", "Error: $err")
                     val b64Err = android.util.Base64.encodeToString(err.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
                     runOnUiThread {
                         translatorCallback("window.onNativeResponse('$callbackJsId', '$b64Err', null)")
@@ -713,7 +690,6 @@ class MainActivity : AppCompatActivity() {
 
         @android.webkit.JavascriptInterface
         fun stageBookFile(name: String, base64: String, mime: String) {
-            AppLogger.d(TAG, "stageBookFile: $name (${base64.length} chars)")
             synchronized(stagedBookFiles) {
                 stagedBookFiles.add(Triple(name, base64, mime))
             }
@@ -772,7 +748,6 @@ class MainActivity : AppCompatActivity() {
             val savedCookies = getSavedCookies() ?: ""
             // Use whichever has more data (both contain member_id + pass_hash if the user is logged in)
             val allCookies = if (cmCookies.length >= savedCookies.length) cmCookies else savedCookies
-            AppLogger.d(TAG, "parseForumPost: cookies length=${allCookies.length}, first 80 chars: ${allCookies.take(80)}")
             
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
@@ -802,13 +777,11 @@ class MainActivity : AppCompatActivity() {
                                 .build()
                             val resp = client.newCall(request).execute()
                             if (!resp.isSuccessful && resp.code != 403 && resp.code != 404) {
-                                AppLogger.w(TAG, "Fetch failed: HTTP ${resp.code} for $url")
                             }
                             val bodyBytes = resp.body?.bytes() ?: return null
                             // Try windows-1251 first as it's 4PDA's default
                             String(bodyBytes, java.nio.charset.Charset.forName("windows-1251"))
                         } catch (e: Exception) {
-                            AppLogger.e(TAG, "Fetch error for $url: ${e.message}")
                             null
                         }
                     }
@@ -816,10 +789,8 @@ class MainActivity : AppCompatActivity() {
                     if (urlPostId > 0) {
                         // URL contains a specific post ID — use it directly
                         postId = urlPostId
-                        AppLogger.d(TAG, "Extracted post ID from URL params: $postId")
                     } else if (topicMatcher != null) {
                         // Only topic ID — fetch the page and find the first post ID
-                        AppLogger.d(TAG, "No post ID in URL, fetching topic page to find first post...")
                         val html = fetchHtml(url) ?: throw Exception("Не удалось загрузить страницу темы")
                         val doc = org.jsoup.Jsoup.parse(html, url)
                         
@@ -839,15 +810,12 @@ class MainActivity : AppCompatActivity() {
                         }
                         
                         if (postId == -1) {
-                            AppLogger.e(TAG, "Could not find post ID in topic HTML. Title: ${doc.title()}")
                             throw Exception("Не удалось найти ID первого поста в теме. Возможно, нужна авторизация.")
                         }
-                        AppLogger.d(TAG, "Extracted first post ID from topic: $postId")
                     } else {
                         throw Exception("URL не содержит showtopic или pid.")
                     }
 
-                    AppLogger.d(TAG, "Parsing post ID: $postId")
                     
                     var postData: JSONObject? = null
                     try {
@@ -863,17 +831,14 @@ class MainActivity : AppCompatActivity() {
                         }
                         wsClient.close()
                     } catch (e: Exception) {
-                        AppLogger.w(TAG, "WebSocket failed: ${e.message}, falling back to HTML parsing")
                     }
                     
                     if (postData == null) {
                         // HTTP FALLBACK — search full page HTML
-                        AppLogger.d(TAG, "Using HTML parsing fallback for post $postId")
                         val html = fetchHtml(url) ?: throw Exception("Не удалось загрузить страницу для парсинга")
                         val doc = org.jsoup.Jsoup.parse(html, url)
                         
                         val fullHtml = html
-                        AppLogger.d(TAG, "Page HTML length: ${fullHtml.length}")
                         
                         val title = doc.title().replace(" - 4PDA", "").trim()
                         var authorName = "Неизвестно"
@@ -890,8 +855,6 @@ class MainActivity : AppCompatActivity() {
                             "td[id=post-$postId]"
                         )
                         if (postWrapper == null) {
-                            AppLogger.w(TAG, "postWrapper NOT FOUND for postId=$postId. " +
-                                "Page title: ${doc.title()}, HTML snippet: ${fullHtml.take(500)}")
                         }
                         
                         var extractedAuthorId: String? = null
@@ -985,7 +948,6 @@ class MainActivity : AppCompatActivity() {
                         // Count downloads from full page text since attachments might be spread out
                         val downloadScope = postWrapper?.html() ?: fullHtml
                         if (authorName == "Неизвестно") {
-                            AppLogger.d(TAG, "DEBUG: Could not find author. First 3000 chars:\n${fullHtml.take(3000)}")
                         }
                         
                         // Count downloads from post scope
@@ -995,7 +957,6 @@ class MainActivity : AppCompatActivity() {
                             totalDownloads += match.groupValues[1].toIntOrNull() ?: 0
                         }
                         
-                        AppLogger.d(TAG, "HTTP fallback result: author=$authorName downloads=$totalDownloads title=$title")
                         
                         // Extract file attachment URL if available
                         val bookAttachmentsCollection = mutableListOf<JSONObject>()
@@ -1007,15 +968,12 @@ class MainActivity : AppCompatActivity() {
                             val cleanPost = postWrapper.clone()
                             cleanPost.select(".signature, .sig, .post_sig").remove()
                             searchScopes.add(cleanPost)
-                            AppLogger.d(TAG, "postWrapper found, searching ONLY inside it (excluding signature).")
                         } else {
-                            AppLogger.d(TAG, "postWrapper is NULL — searching full document as fallback.")
                             searchScopes.add(doc)
                         }
                         
                         for (scope in searchScopes) {
                             val links = scope.select("a[href*=\"dl.4pda.to\"], a[href*=\"4pda.to/forum/dl/post/\"], a[href*=\"/forum/dl/post/\"], a[href*=\"act=attach\"]")
-                            AppLogger.d(TAG, "Found ${links.size} potential attachment links in scope ${if (scope == doc) "FULL DOC" else "POST"}")
                             
                             for (link in links) {
                                 val href = link.attr("abs:href").ifEmpty { link.attr("href") }
@@ -1057,7 +1015,6 @@ class MainActivity : AppCompatActivity() {
                                                 put("name", fname)
                                                 if (attachId != null) put("id", attachId)
                                             })
-                                            AppLogger.d(TAG, "Found book attachment: $fname (ID: $attachId) -> $finalUrl")
                                         }
                                     } else {
                                         // It's an image (likely a cover)
@@ -1069,7 +1026,6 @@ class MainActivity : AppCompatActivity() {
                                                 put("name", fname)
                                                 if (attachId != null) put("id", attachId)
                                             })
-                                            AppLogger.d(TAG, "Found image attachment: $fname (ID: $attachId) -> $finalUrl")
                                         }
                                     }
                                 }
@@ -1077,7 +1033,6 @@ class MainActivity : AppCompatActivity() {
                         }
                         
                         if (bookAttachmentsCollection.isEmpty()) {
-                            AppLogger.w(TAG, "No book file attachment found in HTML! Page title: $title, HTML length: ${fullHtml.length}")
                         }
                         
                         postData = JSONObject().apply {
@@ -1166,7 +1121,6 @@ class MainActivity : AppCompatActivity() {
                                             val bookUrl = att.getString("url")
                                             val bookName = att.getString("name") // Уже санитаризировано выше
                                             
-                                            AppLogger.d(TAG, "Downloading file $i: $bookName")
                                             
                                             val sb = StringBuilder()
                                             for (c in bookUrl) {
@@ -1198,7 +1152,6 @@ class MainActivity : AppCompatActivity() {
                                                 }
                                             }
                                         } catch (e: Exception) {
-                                            AppLogger.e(TAG, "Sequential download failed for a file", e)
                                         }
                         }
                         
@@ -1213,7 +1166,6 @@ class MainActivity : AppCompatActivity() {
                     }
                     
                 } catch (e: Exception) {
-                    AppLogger.e(TAG, "Error parsing forum post", e)
                     withContext(Dispatchers.Main) {
                         val msgBase64 = android.util.Base64.encodeToString((e.message ?: "Неизвестная ошибка").toByteArray(), android.util.Base64.NO_WRAP)
                         parserCallback("window.onPostParseError(decodeURIComponent(escape(atob('$msgBase64'))))")
@@ -1222,13 +1174,25 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        @android.webkit.JavascriptInterface
+        fun goBack() {
+            runOnUiThread {
+                if (isTranslatorVisible) {
+                    showParserWebView()
+                } else if (isForumVisible) {
+                    showParserWebView()
+                } else {
+                    onBackPressed()
+                }
+            }
+        }
+
     }
 
     private fun processPendingPublication(json: String) {
         lifecycleScope.launch {
             try {
                 val data = JSONObject(json)
-                AppLogger.d(TAG, "processPendingPublication: ${data.optString("title")}")
 
                 // Ждём пока JS форума отрендерит поля (onPageFinished срабатывает раньше)
                 var formReady = false
@@ -1242,7 +1206,6 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     if (formReady) {
-                        AppLogger.d(TAG, "Form ready after ${i * 200}ms")
                         break
                     }
                 }
@@ -1264,7 +1227,6 @@ class MainActivity : AppCompatActivity() {
                 if (authKey.isNullOrEmpty()) {
                     throw Exception("Не удалось получить auth_key. Проверьте авторизацию.")
                 }
-                AppLogger.d(TAG, "authKey obtained: ${authKey.take(8)}...")
 
                 // Step 1: Upload files через JS внутри WebView
                 withContext(Dispatchers.Main) {
@@ -1285,7 +1247,6 @@ class MainActivity : AppCompatActivity() {
                         val ext = if (coverMime.contains("png")) "png" else "jpg"
                         val coverFileName = "cover_upload.$ext"
                         try {
-                            AppLogger.d(TAG, "Attaching fallback single cover: $coverFileName")
                             val success = withContext(Dispatchers.Main) {
                                 webDomAutomation.attachFileToDomInput(
                                     coverBase64, coverFileName, coverMime, inputIndex = 0, dispatchChange = true
@@ -1293,7 +1254,6 @@ class MainActivity : AppCompatActivity() {
                             }
                             if (success) coversAttachedCount++
                         } catch (e: Exception) {
-                            AppLogger.e(TAG, "Cover attach error: ${e.message}", e)
                         }
                     }
                 } else {
@@ -1304,7 +1264,6 @@ class MainActivity : AppCompatActivity() {
                         val mime = fileObj.optString("mime", "image/jpeg")
                         if (b64.isNotEmpty()) {
                             try {
-                                AppLogger.d(TAG, "Attaching cover file $i: $name")
                                 val isLast = i == coverFiles.length() - 1
                                 val success = withContext(Dispatchers.Main) {
                                     webDomAutomation.attachFileToDomInput(
@@ -1314,7 +1273,6 @@ class MainActivity : AppCompatActivity() {
                                 if (success) coversAttachedCount++
                                 delay(if (isLast) 1000L else 800L)
                             } catch (e: Exception) {
-                                AppLogger.e(TAG, "Cover file attach error ($name): ${e.message}", e)
                             }
                         }
                     }
@@ -1333,7 +1291,6 @@ class MainActivity : AppCompatActivity() {
                 var savedToDownloadsCount = 0
                 
                 if (stagedFiles.isNotEmpty()) {
-                    AppLogger.d(TAG, "Processing ${stagedFiles.size} staged book files")
                     for ((idx, triple) in stagedFiles.withIndex()) {
                         val (name, b64, mime) = triple
                         
@@ -1342,12 +1299,10 @@ class MainActivity : AppCompatActivity() {
                             saveFileToDownloads(b64, name)
                             savedToDownloadsCount++
                         } catch (e: Exception) {
-                            AppLogger.e(TAG, "Error saving $name to Downloads: ${e.message}")
                         }
 
                         // 2. Attach to Forum
                         try {
-                            AppLogger.d(TAG, "Attaching book file $idx: $name")
                             val isLast = idx == stagedFiles.lastIndex
                             var success = withContext(Dispatchers.Main) {
                                 webDomAutomation.attachFileToDomInput(
@@ -1356,7 +1311,6 @@ class MainActivity : AppCompatActivity() {
                             }
                             
                             if (!success) {
-                                AppLogger.w(TAG, "Attachment to index 1 failed for $name, trying index 0")
                                 success = withContext(Dispatchers.Main) {
                                     webDomAutomation.attachFileToDomInput(
                                         b64, name, mime, inputIndex = 0, dispatchChange = isLast
@@ -1367,15 +1321,12 @@ class MainActivity : AppCompatActivity() {
                             if (success) {
                                 bookFilesAttached.add(name)
                             } else {
-                                AppLogger.e(TAG, "Failed to attach $name to any input")
                             }
                             delay(1000L)
                         } catch (e: Exception) {
-                            AppLogger.e(TAG, "Book file attach error ($name): ${e.message}", e)
                         }
                     }
                 } else {
-                    AppLogger.w(TAG, "No staged book files found")
                 }
                 bookAttached = bookFilesAttached.isNotEmpty()
                 val bookUploadMsg = if (bookFilesAttached.size > 1) "${bookFilesAttached.size} книг прикреплено" else if (bookAttached) "Книга прикреплена" else ""
@@ -1431,7 +1382,6 @@ class MainActivity : AppCompatActivity() {
                     enableEmailNotification = data.optBoolean("enableEmailNotification", false)
                 )
 
-                AppLogger.d(TAG, "Publication Metadata: downloads=${metadata.downloads}, uploader=${metadata.uploader}, postUrl=${metadata.originalPostUrl}")
 
                 val bbCode = data.optString("bbcode")
 
@@ -1462,7 +1412,6 @@ class MainActivity : AppCompatActivity() {
                 }
 
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Publish error: ${e.message}", e)
                 withContext(Dispatchers.Main) {
                     val msg = (e.message ?: "Unknown error").escapeJs()
                     parserCallback("window.onPublishProgress('error', '$msg')")
@@ -1516,7 +1465,6 @@ class MainActivity : AppCompatActivity() {
                 return JSON.stringify(results);
             })()
         """.trimIndent()) { result ->
-            AppLogger.d(TAG, "Search results raw: $result")
             if (result != null && result != "null" && result != "\"\"") {
                 val cleanResult = result.trim('"').replace("\\\"", "\"").replace("\\\\", "\\")
                 runOnUiThread {
@@ -1681,7 +1629,6 @@ class MainActivity : AppCompatActivity() {
             val name = result?.trim('"')
             if (!name.isNullOrEmpty() && name != "null") {
                 saveUsername(name)
-                AppLogger.d(TAG, "Extracted username from page: $name")
             }
         }
     }
@@ -1703,10 +1650,8 @@ class MainActivity : AppCompatActivity() {
                 resolver.openOutputStream(it)?.use { outputStream ->
                     outputStream.write(bytes)
                 }
-                AppLogger.d(TAG, "File saved to Downloads: $fileName")
             }
         } catch (e: Exception) {
-            AppLogger.e(TAG, "Failed to save file to Downloads ($fileName): ${e.message}", e)
         }
     }
 

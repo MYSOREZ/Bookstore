@@ -1,6 +1,5 @@
 package com.bookparser.app.api
 
-import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.*
@@ -16,7 +15,6 @@ import java.util.concurrent.TimeUnit
 class RuwikiAIClient {
 
     companion object {
-        private const val TAG = "RuwikiAI"
         private const val BASE_URL = "https://ru.ruwiki.ru"
         private const val SEARCH_API = "$BASE_URL/api/ruwiki/rest_v1/assistant-gpt/guest/custom-search"
         private const val GPT_API = "$BASE_URL/api/ruwiki/rest_v1/assistant-gpt/guest/gpt"
@@ -56,22 +54,18 @@ class RuwikiAIClient {
 
         withContext(Dispatchers.IO) {
             try {
-                Log.d(TAG, "Инициализация сессии (получение cookies)...")
                 val request = Request.Builder()
                     .url(BASE_URL)
                     .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                     .build()
 
                 client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        Log.e(TAG, "Ошибка инициализации сессии: ${response.code}")
-                    } else {
-                        Log.d(TAG, "Сессия инициализирована.")
+                    if (response.isSuccessful) {
                         isSessionInitialized = true
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Ошибка сети при инициализации: ${e.message}")
+                // Silent fail
             }
         }
     }
@@ -108,8 +102,6 @@ class RuwikiAIClient {
             - Ответ должен быть одним связным абзацем БЕЗ маркировки источников
         """.trimIndent()
 
-        Log.d(TAG, "Запрос биографии: $authorName${if (bookTitle != null) " (книга: $bookTitle)" else ""}")
-
         // Clear history before new biography request to have a fresh context
         messageHistory.clear()
         
@@ -128,7 +120,6 @@ class RuwikiAIClient {
             // For now, we go straight to generation as validated by Python script.
 
             val url = GPT_API
-            Log.d(TAG, "Запрос к РУВИКИ ИИ (REST): ${question.take(50)}...")
 
             // Update history
             val userMsg = JSONObject().apply {
@@ -156,13 +147,11 @@ class RuwikiAIClient {
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    Log.e(TAG, "Ошибка API: ${response.code} - ${response.message}")
                     return@withContext null
                 }
 
                 val responseBodyString = response.body?.string()
                 if (responseBodyString.isNullOrEmpty()) {
-                    Log.e(TAG, "Пустой ответ от сервера")
                     return@withContext null
                 }
 
@@ -178,16 +167,13 @@ class RuwikiAIClient {
                     })
 
                     val cleanText = cleanHtmlTags(assistantMessageHtml)
-                    Log.d(TAG, "Ответ получен: ${cleanText.take(50)}...")
                     return@withContext cleanText
                 } else {
-                    Log.w(TAG, "Поле 'message' отсутствует в ответе: $responseBodyString")
                     return@withContext null
                 }
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "Ошибка выполнения запроса: ${e.message}", e)
             null
         }
     }
@@ -239,6 +225,5 @@ class RuwikiAIClient {
 
     fun clearHistory() {
         messageHistory.clear()
-        Log.d(TAG, "История очищена")
     }
 }

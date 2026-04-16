@@ -1,7 +1,6 @@
 package com.bookparser.app.parser
 
 import android.content.Context
-import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -13,7 +12,6 @@ import java.util.concurrent.TimeUnit
 class BiographyParser(private val context: Context) {
 
     companion object {
-        private const val TAG = "BiographyParser"
         private const val UA = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
         const val SOURCE_WIKIPEDIA = "wikipedia"
         const val SOURCE_RUWIKI = "ruwiki"
@@ -57,82 +55,70 @@ class BiographyParser(private val context: Context) {
     
     private fun fetchRuwikiREST(authorName: String): String? {
         return try {
-            Log.d(TAG, "Запрос биографии через РУВИКИ REST: $authorName")
-    
             // Попытка 1: Формат "Фамилия, Имя" с подчёркиванием
             val parts = authorName.split(" ")
             if (parts.size >= 2) {
                 val wikiFormat = "${parts.last()},_${parts.first()}"
                 fetchRestSummary("ru", wikiFormat, "ruwiki.ru")?.let {
-                    Log.d(TAG, "✓ Биография найдена в формате Wiki")
                     return it
                 }
             }
-    
+
             // Попытка 2: Opensearch поиск
             val searchUrl = "https://ru.ruwiki.ru/w/api.php?action=opensearch&format=json&search=${URLEncoder.encode(authorName, "UTF-8")}&limit=1"
-    
+
             val searchReq = Request.Builder()
                 .url(searchUrl)
                 .addHeader("User-Agent", UA)
                 .build()
-    
+
             var pageTitle: String? = null
-    
+
             client.newCall(searchReq).execute().use { rsp ->
                 if (!rsp.isSuccessful) {
-                    Log.w(TAG, "РУВИКИ opensearch вернул код: ${rsp.code}")
                     return null
                 }
-    
+
                 val body = rsp.body?.string() ?: return null
                 val searchArray = org.json.JSONArray(body)
-    
+
                 if (searchArray.length() < 2 || searchArray.getJSONArray(1).length() == 0) {
-                    Log.w(TAG, "РУВИКИ не нашёл статей")
                     return null
                 }
-    
+
                 pageTitle = searchArray.getJSONArray(1).getString(0)
-                Log.d(TAG, "Найдена статья: $pageTitle")
             }
-    
+
             if (pageTitle == null) return null
-    
+
             // Преобразуем заголовок в URL-формат
             val urlTitle = pageTitle!!.replace(" ", "_")
-    
+
             // Попытка 3: REST summary
             val summaryUrl = "https://ru.ruwiki.ru/api/rest_v1/page/summary/$urlTitle"
-    
-            Log.d(TAG, "Финальный запрос: $summaryUrl")
-    
+
             val summaryReq = Request.Builder()
                 .url(summaryUrl)
                 .addHeader("User-Agent", UA)
                 .build()
-    
+
             client.newCall(summaryReq).execute().use { rsp ->
                 if (!rsp.isSuccessful) {
-                    Log.w(TAG, "REST summary финал вернул код: ${rsp.code}")
                     return null
                 }
-    
+
                 val body = rsp.body?.string() ?: return null
                 val obj = JSONObject(body)
-    
+
                 val extract = obj.optString("extract", "").trim()
                 if (extract.isNotEmpty()) {
-                    Log.d(TAG, "✓ Биография получена из РУВИКИ: ${extract.length} символов")
                     return truncateNicely(cleanFormatting(extract))
                 }
-    
-                Log.w(TAG, "РУВИКИ не вернул extract")
+
                 null
             }
-    
+
         } catch (e: Exception) {
-            Log.e(TAG, "Ошибка РУВИКИ: ${e.message}", e)
             null
         }
     }
@@ -143,21 +129,16 @@ class BiographyParser(private val context: Context) {
         bookGenre: String?
     ): String? {
         return try {
-            Log.d(TAG, "Запрос биографии через РУВИКИ ИИ: $authorName")
-    
             val aiClient = com.bookparser.app.api.RuwikiAIClient()
             val response = aiClient.getBiography(authorName, bookTitle, bookGenre)
-    
+
             if (response != null) {
-                Log.d(TAG, "✓ Биография получена через РУВИКИ ИИ: ${response.length} символов")
                 return cleanFormatting(truncateNicely(response))
             }
-    
-            Log.w(TAG, "РУВИКИ ИИ не вернул ответ")
+
             null
-    
+
         } catch (e: Exception) {
-            Log.e(TAG, "Ошибка РУВИКИ ИИ: ${e.message}", e)
             null
         }
     }
@@ -166,38 +147,33 @@ class BiographyParser(private val context: Context) {
         return try {
             val encoded = URLEncoder.encode(title, "UTF-8")
             val url = "https://$lang.$domain/api/rest_v1/page/summary/$encoded"
-    
-            Log.d(TAG, "Запрос: $url")
-    
+
             val req = Request.Builder()
                 .url(url)
                 .addHeader("User-Agent", UA)
                 .build()
-    
+
             client.newCall(req).execute().use { rsp ->
                 if (!rsp.isSuccessful) {
-                    Log.d(TAG, "REST summary вернул код: ${rsp.code}")
                     return null
                 }
-    
+
                 val body = rsp.body?.string() ?: return null
                 val obj = JSONObject(body)
-    
+
                 val extract = obj.optString("extract", "").trim()
                 if (extract.isNotEmpty()) {
-                    Log.d(TAG, "✓ Биография получена: ${extract.length} символов")
                     return truncateNicely(cleanFormatting(extract))
                 }
-    
+
                 val desc = obj.optString("description", "").trim()
                 if (desc.isNotEmpty()) {
                     return cleanFormatting(desc)
                 }
-    
+
                 null
             }
         } catch (e: Exception) {
-            Log.w(TAG, "REST summary failed: ${e.message}")
             null
         }
     }
@@ -215,15 +191,13 @@ class BiographyParser(private val context: Context) {
                 val textObj = parse.optJSONObject("text") ?: return null
                 val html = textObj.optString("*", "")
                 if (html.isBlank()) return null
-    
+
                 val plain = htmlToPlainLead(html)
                 if (plain.isNotBlank()) {
-                    Log.d(TAG, "✓ Биография получена из Parse API ($lang)")
                     truncateNicely(plain)
                 } else null
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Action parse $lang failed: ${e.message}")
             null
         }
     }

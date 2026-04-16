@@ -49,7 +49,6 @@ class WebDomAutomation(private val webView: WebView) {
                 return JSON.stringify(result);
             })();"""
         ) { result ->
-            AppLogger.d(TAG, "=== FORM DIAGNOSIS ===\n$result")
             if (continuation.isActive) continuation.resume(result ?: "null")
         }
     }
@@ -67,8 +66,6 @@ class WebDomAutomation(private val webView: WebView) {
 
         val genreValues = metadata.genres.take(3).mapNotNull { GenreMapping.genreToValue[it] }
 
-        AppLogger.d(TAG, "fillForm: title=${metadata.title} authors=${metadata.authors} annotation_len=${metadata.annotation?.length ?: 0}")
-        AppLogger.d(TAG, "fillForm: genres=$genreValues year=${metadata.publishYear} publisher=${metadata.publisher}")
 
         val js = """
             (function() {
@@ -136,7 +133,6 @@ class WebDomAutomation(private val webView: WebView) {
         """.trimIndent()
 
         webView.evaluateJavascript(js) { result ->
-            AppLogger.d(TAG, "fillForm result: $result")
             if (continuation.isActive) continuation.resume(result?.contains("SUCCESS") == true)
         }
     }
@@ -231,7 +227,6 @@ class WebDomAutomation(private val webView: WebView) {
                 return 'OK|' + log.join(';');
             })();"""
         ) { result ->
-            AppLogger.d(TAG, "fillBbCode result: $result")
             if (continuation.isActive) continuation.resume(result?.contains("OK") == true)
         }
     }
@@ -253,7 +248,6 @@ class WebDomAutomation(private val webView: WebView) {
         inputIndex: Int = 0,
         dispatchChange: Boolean = true
     ): Boolean {
-        AppLogger.d(TAG, "attachFileToDomInput: fileName=$fileName mimeType=$mimeType base64len=${base64Data.length}")
 
         val escapedFileName = fileName.escapeJs()
         val escapedMimeType = mimeType.escapeJs()
@@ -266,7 +260,6 @@ class WebDomAutomation(private val webView: WebView) {
         for ((i, chunk) in chunks.withIndex()) {
             val escapedChunk = chunk.replace("\\", "\\\\").replace("'", "\\'")
             evalJs("window.__uploadBase64 += '$escapedChunk';")
-            if (i % 5 == 4) AppLogger.d(TAG, "attachFileToDomInput: injected chunk ${i + 1}/${chunks.size}")
         }
 
         // 2. Создаем File из base64 и добавляем его через DataTransfer в input
@@ -320,7 +313,6 @@ class WebDomAutomation(private val webView: WebView) {
         """.trimIndent()
 
         val result = evalJs(injectJs)
-        AppLogger.d(TAG, "attachFileToDomInput result: $result")
         return result?.startsWith("\"SUCCESS") == true || result?.startsWith("SUCCESS") == true
     }
 

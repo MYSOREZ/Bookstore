@@ -34,7 +34,7 @@ class ResultsActivity : AppCompatActivity() {
                 // Not used anymore
             },
             onEditClick = { result ->
-                // TODO: Implement editing functionality
+
                 Toast.makeText(this, "Редактирование: ${result.metadata.title}", Toast.LENGTH_SHORT).show()
             }
         )
