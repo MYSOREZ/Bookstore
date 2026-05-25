@@ -604,6 +604,48 @@
             background: rgba(139, 92, 246, 0.3);
         }
 
+        .search-result-url {
+            font-size: 11px;
+            color: rgba(165, 180, 252, 0.6);
+            margin-top: 2px;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 220px;
+            font-family: 'Inter', monospace;
+            user-select: all;
+            -webkit-user-select: all;
+        }
+
+        .search-result-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .search-result-copy-btn {
+            background: rgba(16, 185, 129, 0.12);
+            color: #6ee7b7;
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            text-decoration: none;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .search-result-copy-btn:active {
+            background: rgba(16, 185, 129, 0.3);
+            transform: scale(0.92);
+        }
+
         /* Info rows inside cards */
         .info-row { display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
         .info-label { font-size: 11px; color: var(--sub); width: 90px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -1213,10 +1255,12 @@
             const lo = file.name.toLowerCase();
             if (lo.endsWith('.fb2')) {
                 await parseFB2File(file);
+                currentBook.originalFilename = file.name;
                 addBook();
             } else if (lo.endsWith('.epub')) {
                 const zip = await JSZip.loadAsync(file);
                 await parseEPUB(zip);
+                currentBook.originalFilename = file.name;
                 addBook();
             } else if (lo.endsWith('.zip')) {
                 const zip = await JSZip.loadAsync(file);
@@ -1224,6 +1268,7 @@
                 if (!found) throw new Error('Книги не найдены в архиве');
             } else if (lo.endsWith('.pdf')) {
                 await parsePDF(file);
+                currentBook.originalFilename = file.name;
                 addBook();
             } else {
                 throw new Error('Неподдерживаемый формат: ' + file.name);
@@ -1256,15 +1301,21 @@
             if (!currentBook || (!currentBook.title && !currentBook.author)) return;
             currentBook.filename = makeFilename(currentBook);
             // Deduplicate: don't add if same author+title+series+seriesNum already exists
+            // (but allow if filenames differ — e.g. two books with identical metadata but different source files)
             const norm = s => (s || '').toLowerCase().replace(/[._\-—–\s]+/g, ' ').trim();
             const isDuplicate = books.some(b =>
                 norm(b.author) === norm(currentBook.author) &&
                 norm(b.title) === norm(currentBook.title) &&
                 norm(b.series) === norm(currentBook.series) &&
-                norm(b.seriesNum) === norm(currentBook.seriesNum)
+                norm(b.seriesNum) === norm(currentBook.seriesNum) &&
+                norm(b.originalFilename || '') === norm(currentBook.originalFilename || '')
             );
             if (!isDuplicate) {
-                books.push({ ...currentBook });
+                const bookCopy = { ...currentBook };
+                if (currentBook.originalBuffer) {
+                    bookCopy.originalBuffer = currentBook.originalBuffer;
+                }
+                books.push(bookCopy);
             }
             // Auto-search on first book only
             if (books.length === 1 && currentBook.title) {
@@ -1393,6 +1444,42 @@
                     currentBook.originalFB2 = txt;
                     currentBook.encoding = enc;
                     currentBook.filename = name;
+                    currentBook.originalFilename = name;
+                    addBook();
+                    found = true;
+                } else if (lo.endsWith('.pdf')) {
+                    resetBook();
+                    const raw = await entry.async('arraybuffer');
+                    currentBook.originalBuffer = raw;
+                    currentBook.originalExtension = 'pdf';
+                    currentBook.filename = name;
+                    currentBook.originalFilename = name;
+                    
+                    try {
+                        const pdf = await pdfjsLib.getDocument({ data: raw.slice(0) }).promise;
+                        const info = (await pdf.getMetadata().catch(() => ({ info: {} }))).info || {};
+                        currentBook.title = info.Title?.trim() || name.replace(/\.pdf$/i, '');
+                        currentBook.author = info.Author?.trim() || 'Неизвестный автор';
+                        currentBook.lang = '';
+
+                        const page = await pdf.getPage(1);
+                        const vp = page.getViewport({ scale: 1.5 });
+                        const cv = document.createElement('canvas');
+                        cv.width = vp.width;
+                        cv.height = vp.height;
+                        await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+                        const b64 = cv.toDataURL('image/jpeg', 0.8).split(',')[1];
+                        currentBook.cover = { data: await optimizeCover(b64, 'image/jpeg'), mime: 'image/jpeg' };
+
+                        let fullText = '';
+                        for (let i = 1; i <= Math.min(pdf.numPages, 30); i++) {
+                            const page = await pdf.getPage(i);
+                            const content = await page.getTextContent();
+                            fullText += content.items.map(item => item.str).join(' ') + '\n\n';
+                        }
+                        currentBook.bodyText = fullText;
+                    } catch (e) { console.error('Ошибка парсинга PDF из архива:', e); }
+
                     addBook();
                     found = true;
                 } else if (lo.endsWith('.zip')) {
@@ -1479,6 +1566,9 @@
             resetBook();
             const buf = await file.arrayBuffer();
             currentBook.originalBuffer = buf;
+            currentBook.originalExtension = 'pdf';
+            currentBook.filename = file.name;
+            currentBook.originalFilename = file.name;
             const pdf = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
             const info = (await pdf.getMetadata().catch(() => ({ info: {} }))).info || {};
             currentBook.title = info.Title?.trim() || file.name.replace(/\.pdf$/i, '');
@@ -2101,15 +2191,29 @@
 
                 for (const b of books) {
                     try {
-                        const fb2Content = b.originalFB2 || generateFB2(b);
-                        const zip = new JSZip();
                         const baseName = makeFilename(b);
-                        zip.file(baseName + '.fb2', fb2Content);
-                        const zipBase64 = await zip.generateAsync({ type: 'base64', compression: 'DEFLATE' });
-                        const fileName = transliterate(baseName) + '.fb2.zip';
+                        let fileName, fileBase64, fileMime;
+
+                        if (b.originalBuffer) {
+                            // PDF — упаковываем в zip
+                            const pdfArray = new Uint8Array(b.originalBuffer);
+                            const pdfZip = new JSZip();
+                            pdfZip.file(baseName + '.pdf', pdfArray);
+                            fileBase64 = await pdfZip.generateAsync({ type: 'base64', compression: 'DEFLATE' });
+                            fileName = baseName + '.pdf.zip';
+                            fileMime = 'application/zip';
+                        } else {
+                            // FB2/EPUB — упаковываем в zip
+                            const fb2Content = b.originalFB2 || generateFB2(b);
+                            const zip = new JSZip();
+                            zip.file(baseName + '.fb2', fb2Content);
+                            fileBase64 = await zip.generateAsync({ type: 'base64', compression: 'DEFLATE' });
+                            fileName = baseName + '.fb2.zip';
+                            fileMime = 'application/zip';
+                        }
 
                         if (window.AndroidBridge && AndroidBridge.stageBookFile) {
-                            AndroidBridge.stageBookFile(fileName, zipBase64, 'application/octet-stream');
+                            AndroidBridge.stageBookFile(fileName, fileBase64, fileMime);
                             await new Promise(r => setTimeout(r, 500));
                         }
                     } catch (err) {
@@ -2177,9 +2281,31 @@
             if (!b) return;
             status('⏳ Подготовка ' + (b.title || 'книги') + '...', 'inf');
             try {
+                const baseName = makeFilename(b);
+
+                // Если оригинальный файл — PDF, упаковываем в zip
+                if (b.originalBuffer) {
+                    const pdfArray = new Uint8Array(b.originalBuffer);
+                    const zip = new JSZip();
+                    zip.file(baseName + '.pdf', pdfArray);
+                    const pdfZipBase64 = await zip.generateAsync({ type: 'base64', compression: 'DEFLATE' });
+                    const finalName = baseName + '.pdf.zip';
+                    if (window.AndroidBridge && AndroidBridge.saveFile) {
+                        AndroidBridge.saveFile(pdfZipBase64, finalName, 'application/zip');
+                        status('✅ ' + finalName + ' отправлен', 'ok');
+                    } else {
+                        const link = document.createElement('a');
+                        link.href = 'data:application/zip;base64,' + pdfZipBase64;
+                        link.download = finalName;
+                        link.click();
+                        status('✅ Скачано: ' + finalName, 'ok');
+                    }
+                    return;
+                }
+
+                // FB2/EPUB — упаковываем в zip
                 const zip = new JSZip();
                 let fb2Content = (b.originalFB2 || generateFB2(b));
-                const baseName = transliterate(makeFilename(b));
                 zip.file(baseName + '.fb2', fb2Content);
                 const base64 = await zip.generateAsync({ type: "base64", compression: "DEFLATE" });
                 const finalName = baseName + '.fb2.zip';
@@ -2282,9 +2408,9 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
         function sanitizeFileName(name) {
             if (!name) return 'book';
             let lo = name.toLowerCase();
-            let isDoubleExt = lo.endsWith('.fb2.zip');
-            let ext = isDoubleExt ? '.fb2.zip' : (name.includes('.') ? name.substring(name.lastIndexOf('.')) : '');
-            let base = isDoubleExt ? name.substring(0, name.length - 8) : (name.includes('.') ? name.substring(0, name.lastIndexOf('.')) : name);
+            let doubleExtMatch = lo.match(/\.(fb2|pdf|epub)\.zip$/);
+            let ext = doubleExtMatch ? doubleExtMatch[0] : (name.includes('.') ? name.substring(name.lastIndexOf('.')) : '');
+            let base = doubleExtMatch ? name.substring(0, name.length - ext.length) : (name.includes('.') ? name.substring(0, name.lastIndexOf('.')) : name);
             let cleaned = transliterate(base);
             cleaned = cleaned.replace(/[.\-—–\(\)\[\]\{\}\s]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
             return (cleaned || 'book') + ext;
@@ -2292,14 +2418,27 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
 
         function makeFilename(b) {
             const p = [];
-            const clean = (s) => (s || '').replace(/[._\-—–\(\)\[\]\{\}\s]+/g, ' ').trim();
+            // Заменяем все спецсимволы на подчёркивания, схлопываем дубли
+            const clean = (s) => (s || '').replace(/[^\w\u0400-\u04FF]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
             if (b.author) {
-                const parts = clean(b.author).split(/[\s,]+/);
-                if (parts.length > 0) p.push(parts[0]);
+                // Берём только фамилию первого автора
+                const rawAuthor = (b.author || '').split(',')[0].trim();
+                const surname = rawAuthor.split(/\s+/)[0] || '';
+                const cleanedSurname = clean(surname);
+                if (cleanedSurname) p.push(cleanedSurname);
             }
-            if (b.series) p.push(clean(b.series));
-            if (b.seriesNum) p.push(clean(b.seriesNum));
-            if (b.title) p.push(clean(b.title));
+            if (b.series) {
+                const s = clean(b.series);
+                if (s) p.push(s);
+            }
+            if (b.seriesNum) {
+                const n = clean(String(b.seriesNum));
+                if (n) p.push(n);
+            }
+            if (b.title) {
+                const t = clean(b.title);
+                if (t) p.push(t);
+            }
             let base = p.join('_').substring(0, 150) || 'book';
             return transliterate(base);
         }
@@ -2422,21 +2561,40 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
             if (results.length > 0) {
                 section.classList.add('show');
                 setTimeout(() => section.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-                results.slice(0, 5).forEach(r => {
+                results.slice(0, 5).forEach((r, idx) => {
                     const card = document.createElement('div');
                     card.className = 'search-result-card';
+                    const safeUrl = esc(r.url);
                     card.innerHTML = `
                         <div class="search-result-info">
                             <div class="search-result-title">${esc(r.title)}</div>
+                            <div class="search-result-url" title="${safeUrl}">${safeUrl}</div>
                             <div class="search-result-score">Совпадение: ${r.score}</div>
                         </div>
-                        <a href="javascript:void(0)" onclick="openForumTopic('${esc(r.url)}')" class="search-result-btn">Открыть</a>
+                        <div class="search-result-actions">
+                            <a href="javascript:void(0)" onclick="copySearchUrl('${safeUrl}', this)" class="search-result-copy-btn" title="Копировать ссылку">📋</a>
+                            <a href="javascript:void(0)" onclick="openForumTopic('${safeUrl}')" class="search-result-btn">Открыть</a>
+                        </div>
                     `;
                     container.appendChild(card);
                 });
             } else {
                 section.classList.remove('show');
             }
+        }
+
+        function copySearchUrl(url, btnEl) {
+            if (window.AndroidBridge && AndroidBridge.copyToClipboard) {
+                AndroidBridge.copyToClipboard(url);
+            } else {
+                navigator.clipboard && navigator.clipboard.writeText(url);
+            }
+            if (btnEl) {
+                const orig = btnEl.textContent;
+                btnEl.textContent = '✅';
+                setTimeout(() => { btnEl.textContent = orig; }, 1200);
+            }
+            status('✅ Ссылка скопирована', 'ok');
         }
 
         function openForumTopic(url) {
