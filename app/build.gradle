@@ -14,8 +14,8 @@ android {
         applicationId "com.bookparser.app"
         minSdk 26
         targetSdk 34
-        versionCode 3
-        versionName "7.0"
+        versionCode 5
+        versionName "7.2"
         
         vectorDrawables { 
             useSupportLibrary = true
@@ -41,6 +41,9 @@ android {
     }
 
     applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            outputFileName = "Bookstore-${variant.versionName}.apk"
+        }
         if (variant.buildType.name == 'release') {
             def obfuscateTask = tasks.register("obfuscateHtmlAssets${variant.name.capitalize()}") {
                 doLast {

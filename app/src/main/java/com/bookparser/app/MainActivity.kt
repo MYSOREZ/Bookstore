@@ -1001,7 +1001,14 @@ class MainActivity : AppCompatActivity() {
                                     if (isBookFile) {
                                         val extMatch = Regex("(?i)(.*\\.(?:zip|fb2|epub|pdf))").find(fname)
                                         if (extMatch != null) fname = extMatch.groupValues[1]
-                                        else fname = "book.fb2.zip"
+                                        else {
+                                            val urlLower = finalUrl.lowercase()
+                                            fname = when {
+                                                urlLower.contains(".pdf") -> "book.pdf.zip"
+                                                urlLower.contains(".epub") -> "book.epub.zip"
+                                                else -> "book.fb2.zip"
+                                            }
+                                        }
                                     }
                                     
                                     val urlIdMatch = Regex("[?&]id=(\\d+)").find(finalUrl)
@@ -1660,15 +1667,15 @@ class MainActivity : AppCompatActivity() {
         
         // Определяем расширение для сохранения
         val lowerName = name.lowercase()
-        val isDoubleExt = lowerName.endsWith(".fb2.zip")
+        val doubleExtMatch = Regex("\\.(fb2|pdf|epub)\\.zip$").find(lowerName)
         
-        val ext = if (isDoubleExt) ".fb2.zip" else {
+        val ext = if (doubleExtMatch != null) doubleExtMatch.value else {
             val lastIdx = name.lastIndexOf('.')
             if (lastIdx > 0) name.substring(lastIdx) else ""
         }
         
-        val baseName = if (isDoubleExt) {
-            name.substring(0, name.length - 8)
+        val baseName = if (doubleExtMatch != null) {
+            name.substring(0, name.length - ext.length)
         } else {
             val lastIdx = name.lastIndexOf('.')
             if (lastIdx > 0) name.substring(0, lastIdx) else name
