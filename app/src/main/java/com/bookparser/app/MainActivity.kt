@@ -37,6 +37,7 @@ import kotlin.coroutines.resume
 import org.json.JSONObject
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import com.bookparser.app.api.AIScreenObservationServer
 
 class MainActivity : AppCompatActivity() {
 
@@ -70,6 +71,8 @@ class MainActivity : AppCompatActivity() {
 
     private var pendingLoginUsername: String? = null
     private var pendingLoginPassword: String? = null
+
+    private var aiServer: AIScreenObservationServer? = null
 
     private lateinit var webViewTranslator: WebView
     private lateinit var webViewGeminiAuth: WebView
@@ -107,6 +110,40 @@ class MainActivity : AppCompatActivity() {
 
         webViewParser.loadUrl("file:///android_asset/parser.html")
         checkExistingAuth()
+        startAiServer()
+    }
+
+    // ════════════════════════════════════════════════
+    //  AI SCREEN OBSERVATION SERVER
+    // ════════════════════════════════════════════════
+
+    private fun startAiServer() {
+        try {
+            aiServer = AIScreenObservationServer(
+                port = 8765,
+                getActiveWebView = {
+                    when {
+                        isGeminiAuthMode  -> "gemini"  to webViewGeminiAuth
+                        isForumVisible    -> "forum"   to webViewForum
+                        isTranslatorVisible -> "translator" to webViewTranslator
+                        else              -> "parser"  to webViewParser
+                    }
+                },
+                runOnMain = { r -> runOnUiThread(r) },
+                navigateToTab = { tab ->
+                    when (tab) {
+                        "parser"     -> showParserWebView()
+                        "translator" -> showTranslatorWebView()
+                        "forum"      -> showForumWebView()
+                        else         -> AppLogger.log("AI: unknown tab '$tab'")
+                    }
+                }
+            )
+            aiServer?.start()
+            AppLogger.log("AI Screen Observation API started on http://localhost:8765")
+        } catch (e: Exception) {
+            AppLogger.log("AI server failed to start: ${e.message}")
+        }
     }
 
     private fun setupLogPanel() {
@@ -1728,6 +1765,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        aiServer?.stop()
         AppLogger.removeListener(logListener)
         webViewParser.destroy()
         webViewForum.destroy()
