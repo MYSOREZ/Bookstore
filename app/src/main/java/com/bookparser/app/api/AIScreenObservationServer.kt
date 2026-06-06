@@ -1127,7 +1127,17 @@ async function testSearch(){
         }
         val resp = try { conn2.inputStream.bufferedReader(Charsets.UTF_8).readText() } finally { conn2.disconnect() }
 
-        val items = JSONObject(resp).optJSONArray("results") ?: return JSONArray()
+        // DDG иногда оборачивает JSON в JS: "if (ddg_spice...) { let o={...}; }"
+        val jsonStr = if (resp.trimStart().startsWith("{")) resp else {
+            val s = resp.indexOf('{')
+            val e = resp.lastIndexOf('}')
+            if (s >= 0 && e > s) resp.substring(s, e + 1)
+            else throw java.io.IOException("DDG: неожиданный формат ответа: ${resp.take(120)}")
+        }
+
+        val root  = JSONObject(jsonStr)
+        val items = root.optJSONArray("results") ?: root.optJSONArray("r")
+            ?: throw java.io.IOException("DDG: нет поля results/r. Ключи: ${root.keys().asSequence().toList()}")
         val out = JSONArray()
         val stripTags = Regex("<[^>]+>")
         for (i in 0 until minOf(items.length(), 8)) {
