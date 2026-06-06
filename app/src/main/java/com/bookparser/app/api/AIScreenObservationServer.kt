@@ -802,28 +802,47 @@ async function testSearch(){
   const q=document.getElementById('test-q').value.trim();
   if(!q) return;
   const out=document.getElementById('test-out');
-  out.style.color='#8b949e'; out.textContent='Ищу...';
+  const provider=document.getElementById('srch').value||'duckduckgo';
+  const t0=Date.now();
+  let tick;
+  function setOut(color,text){out.style.color=color;out.textContent=text;}
+  function elapsed(){return ((Date.now()-t0)/1000).toFixed(1)+'с';}
+  setOut('#8b949e','[0.0с] Провайдер: '+provider+'\n[0.0с] Отправляю запрос...');
+  tick=setInterval(()=>{
+    const lines=out.textContent.split('\n');
+    const last=lines[lines.length-1].replace(/^\[\S+\] /,'');
+    lines[lines.length-1]='['+elapsed()+'] '+last;
+    out.textContent=lines.join('\n');
+  },300);
   const ctrl=new AbortController();
-  const timer=setTimeout(()=>ctrl.abort(),10000);
+  const abortTimer=setTimeout(()=>ctrl.abort(),10000);
   try{
-    const r=await fetch('/api/tools/search',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({query:q}),signal:ctrl.signal});
-    clearTimeout(timer);
+    const r=await fetch('/api/tools/search',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({query:q}),signal:ctrl.signal
+    });
+    clearTimeout(abortTimer); clearInterval(tick);
     const j=await r.json();
     if(j.ok&&j.results&&j.results.length){
-      out.style.color='#3fb950';
-      out.textContent='✓ Провайдер: '+j.provider+' | Найдено: '+j.results.length+'\n\n'+
-        j.results.slice(0,3).map((x,i)=>(i+1)+'. '+x.title+'\n   '+(x.snippet||'').substring(0,140)).join('\n\n');
+      setOut('#3fb950',
+        '['+elapsed()+'] ✓ Провайдер: '+j.provider+' | Найдено: '+j.results.length+'\n\n'+
+        j.results.slice(0,3).map((x,i)=>(i+1)+'. '+x.title+'\n   '+(x.snippet||'').substring(0,140)).join('\n\n')
+      );
     }else{
-      out.style.color='#f85149';
-      out.textContent='✗ Не найдено'+(j.error?' — '+j.error:'')+'\n\nПопробуйте другой поисковик в настройках выше.';
+      setOut('#f85149',
+        '['+elapsed()+'] ✗ Провайдер: '+(j.provider||provider)+'\n'+
+        'Ошибка: '+(j.error||'результатов нет')+'\n'+
+        (j.httpCode?'HTTP код: '+j.httpCode+'\n':'')+
+        '\nПопробуйте другой поисковик в настройках выше.'
+      );
     }
   }catch(e){
-    clearTimeout(timer);
-    out.style.color='#f85149';
-    out.textContent=e.name==='AbortError'
-      ?'✗ Таймаут (10с) — DuckDuckGo не отвечает. Попробуйте Google или Brave.'
-      :'✗ Ошибка: '+e;
+    clearTimeout(abortTimer); clearInterval(tick);
+    setOut('#f85149',
+      e.name==='AbortError'
+        ?'['+elapsed()+'] ✗ Таймаут 10с — '+provider+' не ответил за отведённое время.\nПопробуйте Google или Brave.'
+        :'['+elapsed()+'] ✗ '+e.name+': '+e.message
+    );
   }
 }
 </script></body></html>""".replace("\$settingsJson", settingsJson.toString())
@@ -1055,9 +1074,29 @@ async function testSearch(){
             json(Response.Status.OK, JSONObject().apply {
                 put("ok", true); put("query", query); put("provider", provider); put("results", results)
             }.toString())
+        } catch (e: java.net.SocketTimeoutException) {
+            json(Response.Status.OK, JSONObject().apply {
+                put("ok", false); put("provider", provider)
+                put("error", "таймаут — $provider не ответил за 8с")
+                put("results", JSONArray())
+            }.toString())
+        } catch (e: java.net.ConnectException) {
+            json(Response.Status.OK, JSONObject().apply {
+                put("ok", false); put("provider", provider)
+                put("error", "нет соединения с $provider: ${e.message}")
+                put("results", JSONArray())
+            }.toString())
+        } catch (e: java.io.IOException) {
+            json(Response.Status.OK, JSONObject().apply {
+                put("ok", false); put("provider", provider)
+                put("error", "ошибка сети (${e.javaClass.simpleName}): ${e.message}")
+                put("results", JSONArray())
+            }.toString())
         } catch (e: Exception) {
             json(Response.Status.OK, JSONObject().apply {
-                put("ok", false); put("error", e.message ?: "search failed"); put("results", JSONArray())
+                put("ok", false); put("provider", provider)
+                put("error", "${e.javaClass.simpleName}: ${e.message}")
+                put("results", JSONArray())
             }.toString())
         }
     }
@@ -1070,6 +1109,11 @@ async function testSearch(){
             setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
             connectTimeout = 8_000; readTimeout = 8_000
             instanceFollowRedirects = true
+        }
+        val code = conn.responseCode
+        if (code != 200) {
+            conn.disconnect()
+            throw java.io.IOException("HTTP $code от DuckDuckGo${if (code == 429) " (rate limit — слишком много запросов)" else ""}")
         }
         val html = try {
             conn.inputStream.bufferedReader(Charsets.UTF_8).readText()
