@@ -1102,42 +1102,47 @@ async function testSearch(){
     }
 
     private fun webSearchDDG(query: String): JSONArray {
-        val url = java.net.URL("https://lite.duckduckgo.com/lite/?q=${java.net.URLEncoder.encode(query, "UTF-8")}")
-        val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+
+        // Шаг 1: получаем vqd-токен (требуется DDG для JSON API)
+        val vqd = run {
+            val conn = (java.net.URL("https://duckduckgo.com/?q=$encoded").openConnection() as java.net.HttpURLConnection).apply {
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Android 14; Mobile; rv:124.0) Gecko/124.0 Firefox/124.0")
+                connectTimeout = 8_000; readTimeout = 8_000; instanceFollowRedirects = true
+            }
+            val html = try { conn.inputStream.bufferedReader(Charsets.UTF_8).readText() } finally { conn.disconnect() }
+            listOf("vqd=\"" to "\"", "vqd=" to "&", "vqd='" to "'").firstNotNullOfOrNull { (c1, c2) ->
+                val s = html.indexOf(c1).takeIf { it >= 0 }?.plus(c1.length) ?: return@firstNotNullOfOrNull null
+                val e = html.indexOf(c2, s).takeIf { it >= 0 } ?: return@firstNotNullOfOrNull null
+                html.substring(s, e).takeIf { it.isNotBlank() }
+            } ?: throw java.io.IOException("DDG: vqd токен не найден")
+        }
+
+        // Шаг 2: JSON результаты с links.duckduckgo.com/d.js
+        val params = "q=$encoded&kl=ru-ru&l=ru-ru&s=0&vqd=${java.net.URLEncoder.encode(vqd,"UTF-8")}&o=json&sp=0"
+        val conn2 = (java.net.URL("https://links.duckduckgo.com/d.js?$params").openConnection() as java.net.HttpURLConnection).apply {
             setRequestProperty("User-Agent", "Mozilla/5.0 (Android 14; Mobile; rv:124.0) Gecko/124.0 Firefox/124.0")
-            setRequestProperty("Accept-Language", "ru,en;q=0.9")
-            setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            setRequestProperty("Referer", "https://duckduckgo.com/")
             connectTimeout = 8_000; readTimeout = 8_000
-            instanceFollowRedirects = true
         }
-        val code = conn.responseCode
-        if (code != 200) {
-            conn.disconnect()
-            throw java.io.IOException("HTTP $code от DuckDuckGo${if (code == 429) " (rate limit — слишком много запросов)" else ""}")
-        }
-        val html = try {
-            conn.inputStream.bufferedReader(Charsets.UTF_8).readText()
-        } finally {
-            conn.disconnect()
-        }
+        val resp = try { conn2.inputStream.bufferedReader(Charsets.UTF_8).readText() } finally { conn2.disconnect() }
+
+        val items = JSONObject(resp).optJSONArray("results") ?: return JSONArray()
         val out = JSONArray()
-        // Ищем по uddg= — стабильный маркер результатов DDG, не зависит от CSS классов
-        val linkRe    = Regex("""<a\b[^>]*href="[^"]*uddg=([^&"]+)[^"]*"[^>]*>([^<]+)</a>""")
-        val snippetRe = Regex("""class=.result-snippet[^>]*>\s*([^<]+)""")
-        val snippets  = snippetRe.findAll(html).map { it.groupValues[1].trim() }.toList()
-        var idx = 0
-        linkRe.findAll(html).forEach { m ->
-            val title  = m.groupValues[2].trim().takeIf { it.isNotBlank() } ?: return@forEach
-            val rawUrl = runCatching { java.net.URLDecoder.decode(m.groupValues[1], "UTF-8") }.getOrElse { m.groupValues[1] }
-            if (out.length() < 8) out.put(JSONObject().apply {
-                put("title", htmlEntities(title))
-                put("snippet", htmlEntities(snippets.getOrNull(idx) ?: ""))
-                put("url", rawUrl)
+        val stripTags = Regex("<[^>]+>")
+        for (i in 0 until minOf(items.length(), 8)) {
+            val r = items.getJSONObject(i)
+            val url  = r.optString("u").takeIf { it.isNotBlank() && !it.contains("google.com/search") } ?: continue
+            val title   = stripTags.replace(r.optString("t"), "").trim()
+            val snippet = stripTags.replace(r.optString("a"), "").trim()
+            if (title.isBlank() && snippet.isBlank()) continue
+            out.put(JSONObject().apply {
+                put("title", htmlEntities(title.ifBlank { url }))
+                put("snippet", htmlEntities(snippet))
+                put("url", url)
             })
-            idx++
         }
-        if (out.length() == 0)
-            throw java.io.IOException("DDG: uddg= не найден в HTML. Превью: ${html.take(300).replace("\n"," ")}")
+        if (out.length() == 0) throw java.io.IOException("DDG API: результатов нет (vqd=$vqd)")
         return out
     }
 
