@@ -675,7 +675,7 @@ select option{background:#161b22}
 <h2>Поиск в интернете</h2>
 <label>Поисковик</label>
 <select name="search_provider" id="srch">
-  <option value="duckduckgo">DuckDuckGo (бесплатно, без ключа)</option>
+  <option value="duckduckgo">SearXNG (бесплатно, без ключа)</option>
   <option value="google">Google Custom Search (100/день, нужен ключ)</option>
   <option value="brave">Brave Search (2000/месяц, нужен ключ)</option>
 </select>
@@ -1102,58 +1102,46 @@ async function testSearch(){
     }
 
     private fun webSearchDDG(query: String): JSONArray {
+        // DDG блокирует не-браузерные запросы JS-челленджем → используем SearXNG.
+        // SearXNG — мета-поисковик с открытым JSON API, без ключа, без bot-защиты.
         val encoded = java.net.URLEncoder.encode(query, "UTF-8")
-
-        // Шаг 1: получаем vqd-токен (требуется DDG для JSON API)
-        val vqd = run {
-            val conn = (java.net.URL("https://duckduckgo.com/?q=$encoded").openConnection() as java.net.HttpURLConnection).apply {
-                setRequestProperty("User-Agent", "Mozilla/5.0 (Android 14; Mobile; rv:124.0) Gecko/124.0 Firefox/124.0")
-                connectTimeout = 8_000; readTimeout = 8_000; instanceFollowRedirects = true
-            }
-            val html = try { conn.inputStream.bufferedReader(Charsets.UTF_8).readText() } finally { conn.disconnect() }
-            listOf("vqd=\"" to "\"", "vqd=" to "&", "vqd='" to "'").firstNotNullOfOrNull { (c1, c2) ->
-                val s = html.indexOf(c1).takeIf { it >= 0 }?.plus(c1.length) ?: return@firstNotNullOfOrNull null
-                val e = html.indexOf(c2, s).takeIf { it >= 0 } ?: return@firstNotNullOfOrNull null
-                html.substring(s, e).takeIf { it.isNotBlank() }
-            } ?: throw java.io.IOException("DDG: vqd токен не найден")
+        val instances = listOf(
+            "https://searx.be",
+            "https://searxng.site",
+            "https://search.mdosch.de",
+            "https://searx.prvcy.eu"
+        )
+        var lastError = "все инстансы недоступны"
+        for (base in instances) {
+            try {
+                val conn = (java.net.URL("$base/search?q=$encoded&format=json&language=ru-RU&categories=general")
+                    .openConnection() as java.net.HttpURLConnection).apply {
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Android 14; Mobile; rv:124.0) Gecko/124.0 Firefox/124.0")
+                    setRequestProperty("Accept", "application/json, text/javascript, */*")
+                    connectTimeout = 8_000; readTimeout = 8_000; instanceFollowRedirects = true
+                }
+                val code = conn.responseCode
+                if (code != 200) { conn.disconnect(); lastError = "HTTP $code от $base"; continue }
+                val resp = try { conn.inputStream.bufferedReader(Charsets.UTF_8).readText() } finally { conn.disconnect() }
+                val items = JSONObject(resp).optJSONArray("results") ?: run { lastError = "$base: нет поля results"; continue }
+                val out = JSONArray()
+                for (i in 0 until minOf(items.length(), 8)) {
+                    val r = items.getJSONObject(i)
+                    val title   = r.optString("title").trim()
+                    val itemUrl = r.optString("url").trim()
+                    val snippet = r.optString("content").trim()
+                    if (title.isBlank() && itemUrl.isBlank()) continue
+                    out.put(JSONObject().apply {
+                        put("title", title.ifBlank { itemUrl })
+                        put("snippet", snippet)
+                        put("url", itemUrl)
+                    })
+                }
+                if (out.length() > 0) return out
+                lastError = "$base: пустой результат"
+            } catch (e: Exception) { lastError = "${e.javaClass.simpleName}: ${e.message} ($base)"; continue }
         }
-
-        // Шаг 2: JSON результаты с links.duckduckgo.com/d.js
-        val params = "q=$encoded&kl=ru-ru&l=ru-ru&s=0&vqd=${java.net.URLEncoder.encode(vqd,"UTF-8")}&o=json&sp=0"
-        val conn2 = (java.net.URL("https://links.duckduckgo.com/d.js?$params").openConnection() as java.net.HttpURLConnection).apply {
-            setRequestProperty("User-Agent", "Mozilla/5.0 (Android 14; Mobile; rv:124.0) Gecko/124.0 Firefox/124.0")
-            setRequestProperty("Referer", "https://duckduckgo.com/")
-            connectTimeout = 8_000; readTimeout = 8_000
-        }
-        val resp = try { conn2.inputStream.bufferedReader(Charsets.UTF_8).readText() } finally { conn2.disconnect() }
-
-        // DDG иногда оборачивает JSON в JS: "if (ddg_spice...) { let o={...}; }"
-        val jsonStr = if (resp.trimStart().startsWith("{")) resp else {
-            val s = resp.indexOf('{')
-            val e = resp.lastIndexOf('}')
-            if (s >= 0 && e > s) resp.substring(s, e + 1)
-            else throw java.io.IOException("DDG: неожиданный формат ответа: ${resp.take(120)}")
-        }
-
-        val root  = JSONObject(jsonStr)
-        val items = root.optJSONArray("results") ?: root.optJSONArray("r")
-            ?: throw java.io.IOException("DDG: нет поля results/r. Ключи: ${root.keys().asSequence().toList()}")
-        val out = JSONArray()
-        val stripTags = Regex("<[^>]+>")
-        for (i in 0 until minOf(items.length(), 8)) {
-            val r = items.getJSONObject(i)
-            val url  = r.optString("u").takeIf { it.isNotBlank() && !it.contains("google.com/search") } ?: continue
-            val title   = stripTags.replace(r.optString("t"), "").trim()
-            val snippet = stripTags.replace(r.optString("a"), "").trim()
-            if (title.isBlank() && snippet.isBlank()) continue
-            out.put(JSONObject().apply {
-                put("title", htmlEntities(title.ifBlank { url }))
-                put("snippet", htmlEntities(snippet))
-                put("url", url)
-            })
-        }
-        if (out.length() == 0) throw java.io.IOException("DDG API: результатов нет (vqd=$vqd)")
-        return out
+        throw java.io.IOException("SearXNG: $lastError")
     }
 
     private fun webSearchGoogle(query: String, cfg: JSONObject): JSONArray {
