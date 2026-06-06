@@ -803,8 +803,12 @@ async function testSearch(){
   if(!q) return;
   const out=document.getElementById('test-out');
   out.style.color='#8b949e'; out.textContent='Ищу...';
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),10000);
   try{
-    const r=await fetch('/api/tools/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})});
+    const r=await fetch('/api/tools/search',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({query:q}),signal:ctrl.signal});
+    clearTimeout(timer);
     const j=await r.json();
     if(j.ok&&j.results&&j.results.length){
       out.style.color='#3fb950';
@@ -812,9 +816,15 @@ async function testSearch(){
         j.results.slice(0,3).map((x,i)=>(i+1)+'. '+x.title+'\n   '+(x.snippet||'').substring(0,140)).join('\n\n');
     }else{
       out.style.color='#f85149';
-      out.textContent='✗ Ничего не найдено'+(j.error?' — '+j.error:'');
+      out.textContent='✗ Не найдено'+(j.error?' — '+j.error:'')+'\n\nПопробуйте другой поисковик в настройках выше.';
     }
-  }catch(e){out.style.color='#f85149';out.textContent='✗ Ошибка: '+e;}
+  }catch(e){
+    clearTimeout(timer);
+    out.style.color='#f85149';
+    out.textContent=e.name==='AbortError'
+      ?'✗ Таймаут (10с) — DuckDuckGo не отвечает. Попробуйте Google или Brave.'
+      :'✗ Ошибка: '+e;
+  }
 }
 </script></body></html>""".replace("\$settingsJson", settingsJson.toString())
         return html(html)
@@ -1057,10 +1067,15 @@ async function testSearch(){
         val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
             setRequestProperty("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0")
             setRequestProperty("Accept-Language", "ru,en;q=0.9")
-            connectTimeout = 12_000; readTimeout = 15_000
+            setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            connectTimeout = 8_000; readTimeout = 8_000
+            instanceFollowRedirects = true
         }
-        val html = conn.inputStream.bufferedReader(Charsets.UTF_8).readText()
-        conn.disconnect()
+        val html = try {
+            conn.inputStream.bufferedReader(Charsets.UTF_8).readText()
+        } finally {
+            conn.disconnect()
+        }
         val out = JSONArray()
         html.split("result__body").drop(1).take(8).forEach { block ->
             val title   = Regex("""class="result__a"[^>]*>([^<]+)""").find(block)?.groupValues?.getOrNull(1)?.trim() ?: return@forEach
