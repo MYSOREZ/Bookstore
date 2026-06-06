@@ -54,6 +54,11 @@ class AIScreenObservationServer(
     private data class SseClient(val send: (String) -> Unit, val output: PipedOutputStream)
     private val sseClients = CopyOnWriteArrayList<SseClient>()
 
+    // ── WebView search callbacks ──────────────────────────────────────────────
+    // JS in WebView POSTs results here after its async fetch() completes
+    private val pendingSearchRequests =
+        java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CompletableFuture<JSONArray>>()
+
     fun pushEvent(type: String, data: JSONObject) {
         val msg = "event: $type\ndata: $data\n\n"
         sseClients.removeAll { c ->
@@ -83,6 +88,7 @@ class AIScreenObservationServer(
             uri == "/api/settings/save" && session.method == Method.POST -> handleSaveSettings(session)
             uri == "/api/ai/search" && session.method == Method.POST -> handleAiSearch(session)
             uri == "/api/tools/search" && session.method == Method.POST -> handleToolsSearch(session)
+            uri.startsWith("/api/internal/") && session.method == Method.POST -> handleInternalCallback(session, uri)
             else -> json(Response.Status.NOT_FOUND, errorJson("unknown endpoint — see /docs"))
         }
     } catch (e: Exception) {
@@ -1101,32 +1107,101 @@ async function testSearch(){
         }
     }
 
-    private fun webSearchDDG(query: String): JSONArray {
-        // DDG блокирует не-браузерные запросы JS-челленджем → используем SearXNG.
-        // Глобальный CookieManager (установлен в AIServerService) хранит и отправляет
-        // куки автоматически — нет необходимости их извлекать вручную.
+    // ── POST /api/internal/{id} — callback from WebView JS after async fetch ──
+
+    private fun handleInternalCallback(session: IHTTPSession, uri: String): Response {
+        val id = uri.removePrefix("/api/internal/")
+        val body = HashMap<String, String>()
+        session.parseBody(body)
+        val raw = body["postData"]?.takeIf { it.isNotBlank() } ?: "[]"
+        pendingSearchRequests.remove(id)?.complete(
+            runCatching { JSONArray(raw) }.getOrElse { JSONArray() }
+        )
+        return json(Response.Status.OK, """{"ok":true}""")
+    }
+
+    // ── SearXNG via WebView fetch() ───────────────────────────────────────────
+    //
+    // The WebView is a real Chrome engine — it passes Cloudflare JS challenges
+    // automatically (same reason 4PDA works). We inject an async fetch() call
+    // and wait for the WebView to POST the result back to our localhost server.
+
+    private fun webSearchViaWebView(query: String): JSONArray? {
+        val (_, wv) = getActiveWebView()
+        wv ?: return null
+
+        val id = java.util.UUID.randomUUID().toString().replace("-", "")
+        val future = java.util.concurrent.CompletableFuture<JSONArray>()
+        pendingSearchRequests[id] = future
+
+        val eq  = java.net.URLEncoder.encode(query, "UTF-8")
+        val instances = listOf(
+            "https://searx.be", "https://search.sapti.me", "https://paulgo.io",
+            "https://searx.fmac.xyz", "https://search.mdosch.de",
+            "https://searxng.site", "https://searx.prvcy.eu"
+        )
+        val instJs = instances.joinToString(",") { "\"$it\"" }
+
+        // Language injected safely — no string interpolation of user data in the template
+        val js = """
+(function(){
+  var instances=[$instJs];
+  var id='$id', eq='$eq';
+  function report(arr){
+    fetch('http://127.0.0.1:8765/api/internal/'+id,{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(arr)
+    }).catch(function(){});
+  }
+  (async function(){
+    for(var i=0;i<instances.length;i++){
+      var base=instances[i];
+      try{
+        var r=await fetch(base+'/search?q='+eq+'&format=json&language=ru-RU&categories=general',{
+          headers:{'Accept':'application/json,*/*','Referer':base+'/'}
+        });
+        if(!r.ok) continue;
+        var data=await r.json();
+        if(data.results&&data.results.length>0){
+          report(data.results.slice(0,8).map(function(x){
+            return{title:x.title||'',snippet:x.content||'',url:x.url||''};
+          }));
+          return;
+        }
+      }catch(e){continue;}
+    }
+    report([]);
+  })().catch(function(){report([]);});
+})()""".trimIndent()
+
+        return try {
+            runBlocking { withTimeoutOrNull(2_000) { evalJs(wv, js) } }
+            val result = future.get(25, java.util.concurrent.TimeUnit.SECONDS)
+            if (result != null && result.length() > 0) result else null
+        } catch (e: Exception) {
+            pendingSearchRequests.remove(id)
+            null
+        }
+    }
+
+    // ── SearXNG via HttpURLConnection (fallback) ──────────────────────────────
+
+    private fun webSearchDDGHttp(query: String): JSONArray {
         val encoded = java.net.URLEncoder.encode(query, "UTF-8")
         val instances = listOf(
-            "https://searx.be",
-            "https://search.sapti.me",
-            "https://paulgo.io",
-            "https://searx.fmac.xyz",
-            "https://search.mdosch.de",
-            "https://searxng.site",
-            "https://searx.prvcy.eu"
+            "https://searx.be", "https://search.sapti.me", "https://paulgo.io",
+            "https://searx.fmac.xyz", "https://search.mdosch.de",
+            "https://searxng.site", "https://searx.prvcy.eu"
         )
         var lastError = "все инстансы недоступны"
         for (base in instances) {
             try {
-                // Шаг 1: «разогреть» домен — глобальный CookieManager запомнит Set-Cookie автоматически
+                // Warm up domain so the global CookieManager stores Set-Cookie
                 (java.net.URL("$base/").openConnection() as java.net.HttpURLConnection).run {
                     setRequestProperty("User-Agent", "Mozilla/5.0 (Android 14; Mobile; rv:124.0) Gecko/124.0 Firefox/124.0")
                     connectTimeout = 5_000; readTimeout = 5_000; instanceFollowRedirects = true
                     try { responseCode } catch (_: Exception) {}
                     disconnect()
                 }
-
-                // Шаг 2: поиск — куки отправляются автоматически CookieManager'ом
                 val conn = (java.net.URL("$base/search?q=$encoded&format=json&language=ru-RU&categories=general")
                     .openConnection() as java.net.HttpURLConnection).apply {
                     setRequestProperty("User-Agent", "Mozilla/5.0 (Android 14; Mobile; rv:124.0) Gecko/124.0 Firefox/124.0")
@@ -1156,7 +1231,14 @@ async function testSearch(){
                 lastError = "$base: пустой результат"
             } catch (e: Exception) { lastError = "${e.javaClass.simpleName}: ${e.message} ($base)"; continue }
         }
-        throw java.io.IOException("SearXNG: $lastError")
+        throw java.io.IOException("SearXNG HTTP: $lastError")
+    }
+
+    private fun webSearchDDG(query: String): JSONArray {
+        // Primary: WebView fetch() — full browser engine, passes Cloudflare
+        webSearchViaWebView(query)?.let { return it }
+        // Fallback: direct HttpURLConnection with global CookieManager
+        return webSearchDDGHttp(query)
     }
 
     private fun webSearchGoogle(query: String, cfg: JSONObject): JSONArray {
