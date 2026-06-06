@@ -1121,20 +1121,23 @@ async function testSearch(){
             conn.disconnect()
         }
         val out = JSONArray()
-        val titles   = Regex("""class="result-link"[^>]*href="([^"]*)"[^>]*>\s*([^<]+)""").findAll(html).take(8).toList()
-        val snippets = Regex("""class="result-snippet"[^>]*>(.*?)</(?:td|span)>""", RegexOption.DOT_MATCHES_ALL).findAll(html).take(8).toList()
-        titles.forEachIndexed { i, m ->
-            val title = m.groupValues[2].trim().takeIf { it.isNotBlank() } ?: return@forEachIndexed
-            val href  = m.groupValues[1]
+        // href может стоять до или после class — матчим тег целиком, потом проверяем атрибуты
+        val snippets = Regex("""class=.result-snippet[^>]*>\s*([^<]+)""")
+            .findAll(html).map { it.groupValues[1].trim() }.toList()
+        var idx = 0
+        Regex("""<a\b([^>]*)>([^<]*)</a>""").findAll(html).forEach { m ->
+            val attrs = m.groupValues[1]
+            if (!attrs.contains("result-link")) return@forEach
+            val title = m.groupValues[2].trim().takeIf { it.isNotBlank() } ?: return@forEach
+            val href  = Regex("""href="([^"]+)"""").find(attrs)?.groupValues?.getOrNull(1) ?: ""
             val realUrl = Regex("""uddg=([^&"]+)""").find(href)?.groupValues?.getOrNull(1)
                 ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrElse { it } } ?: href
-            val snippet = snippets.getOrNull(i)?.groupValues?.getOrNull(1)
-                ?.let { Regex("<[^>]+>").replace(it, "").trim() } ?: ""
-            out.put(JSONObject().apply {
+            if (out.length() < 8) out.put(JSONObject().apply {
                 put("title", htmlEntities(title))
-                put("snippet", htmlEntities(snippet))
+                put("snippet", htmlEntities(snippets.getOrNull(idx) ?: ""))
                 put("url", realUrl)
             })
+            idx++
         }
         if (out.length() == 0)
             throw java.io.IOException("DDG lite: результаты не распознаны. HTML[400]: ${html.take(400).replace("\n"," ")}")
