@@ -71,6 +71,7 @@ class AIScreenObservationServer(
         when {
             session.method == Method.OPTIONS         -> corsOk()
             uri == "" || uri == "/docs"              -> handleDocs()
+            uri == "/agent"                          -> handleAgentPage()
             uri == "/settings"                       -> handleSettingsPage()
             uri == "/api/status"                     -> handleStatus()
             uri == "/api/screen"                     -> handleScreen()
@@ -85,6 +86,316 @@ class AIScreenObservationServer(
         }
     } catch (e: Exception) {
         json(Response.Status.INTERNAL_ERROR, errorJson(e.message ?: "internal error"))
+    }
+
+    // ── GET /agent — AI агент в браузере ─────────────────────────────────────
+
+    private fun handleAgentPage(): Response {
+        val html = """<!DOCTYPE html><html lang="ru"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Агент — Bookstore</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Courier New',monospace;background:#0d1117;color:#c9d1d9;display:flex;flex-direction:column;height:100vh;overflow:hidden}
+#top{padding:10px 12px;background:#161b22;border-bottom:1px solid #30363d;flex-shrink:0}
+h1{color:#58a6ff;font-size:1em;margin-bottom:8px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#task{flex:1;min-width:180px;background:#010409;border:1px solid #30363d;border-radius:6px;color:#e6edf3;padding:7px 10px;font-size:.9em;font-family:inherit}
+#task:focus{outline:none;border-color:#58a6ff}
+.btn{padding:7px 14px;border:none;border-radius:6px;cursor:pointer;font-size:.85em;font-family:inherit;white-space:nowrap}
+#btnRun{background:#238636;color:#fff}.btnStop{background:#da3633;color:#fff}.btnClear{background:#21262d;color:#c9d1d9}.btnFill{background:#1f6feb;color:#fff}
+.btn:hover{opacity:.85}.btn:disabled{opacity:.4;cursor:not-allowed}
+#info{font-size:.78em;color:#6e7681;margin-top:6px}
+.tabs{display:flex;gap:1px;background:#21262d;border-radius:6px;padding:2px;margin-top:8px}
+.tab{flex:1;text-align:center;padding:5px;border-radius:4px;cursor:pointer;font-size:.8em;color:#8b949e}
+.tab.active{background:#0d1117;color:#e6edf3}
+#main{flex:1;display:flex;overflow:hidden}
+#pane-log,#pane-screen,#pane-fill{flex:1;overflow-y:auto;padding:10px 12px;display:none;font-size:.82em}
+#pane-log.show,#pane-screen.show,#pane-fill.show{display:block}
+.step{padding:3px 0;border-bottom:1px solid #21262d}
+.step.h{color:#58a6ff;font-weight:bold;font-size:.95em;border:none;margin:4px 0}
+.step.s{color:#3fb950}.step.e{color:#f85149}.step.w{color:#e3b341}.step.i{color:#8b949e}
+#screen-pre{white-space:pre-wrap;word-break:break-all;color:#8b949e;font-size:.8em}
+#fill-form label{display:block;color:#8b949e;font-size:.85em;margin:8px 0 3px}
+#fill-form input,#fill-form textarea{width:100%;background:#010409;border:1px solid #30363d;border-radius:5px;color:#e6edf3;padding:7px;font-size:.85em;font-family:inherit;margin-bottom:4px}
+#fill-status{margin-top:8px;color:#8b949e;font-size:.85em}
+.nav-links{font-size:.75em;margin-top:6px}
+.nav-links a{color:#58a6ff;text-decoration:none;margin-right:10px}
+</style></head><body>
+<div id="top">
+<h1>&#x1F916; Bookstore AI Агент</h1>
+<div class="row">
+  <input id="task" placeholder="Что сделать? (напр: заполни поля книги и опубликуй)" onkeydown="if(event.key==='Enter')run()">
+  <button class="btn" id="btnRun" onclick="run()">&#9654; Запуск</button>
+  <button class="btn btnStop" onclick="stop()">&#9632; Стоп</button>
+  <button class="btn btnFill" onclick="switchTab('fill')">&#128218; Заполнить поля</button>
+  <button class="btn btnClear" onclick="clearLog()">&#10006;</button>
+</div>
+<div id="info">Загрузка настроек...</div>
+<div class="tabs">
+  <div class="tab active" id="tab-log" onclick="switchTab('log')">Лог агента</div>
+  <div class="tab" id="tab-screen" onclick="switchTab('screen')">Экран</div>
+  <div class="tab" id="tab-fill" onclick="switchTab('fill')">Заполнение полей</div>
+</div>
+<div class="nav-links"><a href="/docs">Справочник</a><a href="/settings">Настройки</a></div>
+</div>
+<div id="main">
+  <div id="pane-log" class="show"><div id="log-inner"></div></div>
+  <div id="pane-screen"><pre id="screen-pre">Нажмите "Экран" чтобы обновить</pre><button class="btn btnClear" style="margin-top:8px" onclick="refreshScreen()">Обновить</button></div>
+  <div id="pane-fill">
+    <div id="fill-form">
+      <b style="color:#79c0ff">Заполнение полей книги через AI + поиск в интернете</b>
+      <label>Название книги</label><input id="f-title" placeholder="Война и мир">
+      <label>Автор</label><input id="f-author" placeholder="Лев Толстой">
+      <label>Дополнительный контекст (необязательно)</label>
+      <textarea id="f-extra" rows="2" placeholder="жанр, год, серия..."></textarea>
+      <div class="row" style="gap:8px;margin-top:4px">
+        <button class="btn" style="background:#238636;color:#fff;flex:1" onclick="fillMode()">&#128269; Найти и заполнить</button>
+        <button class="btn btnClear" onclick="autoReadFields()">Взять с экрана</button>
+      </div>
+      <div id="fill-status"></div>
+      <div id="fill-result" style="margin-top:12px;display:none">
+        <b style="color:#79c0ff">Сгенерированные поля:</b>
+        <pre id="fill-data" style="white-space:pre-wrap;color:#c9d1d9;margin-top:6px;font-size:.82em"></pre>
+        <button class="btn" style="background:#238636;color:#fff;margin-top:8px;width:100%" onclick="applyFields()">Применить через агента</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+var settings={}, running=false, generatedFields={};
+
+const SYSTEM=`You control an Android book publishing app via API. Tabs: parser (load files), translator, forum (publish).
+Available actions (reply ONLY valid JSON, no markdown):
+  navigate  {tab:parser|translator|forum}
+  click     {selector:"#id"}
+  fill      {selector:"#id",value:"text"}
+  select_option {selector:"#id",value:"opt"}
+  scroll_to {selector:"#id"}
+  clipboard_write {text:"..."}
+  wait      {ms:1000}
+  js        {code:"..."}
+  done      {}
+Format: {"action":"...","selector":"...","value":"...","tab":"...","ms":0,"text":"...","code":"...","reason":"brief"}`;
+
+async function init(){
+  try{
+    settings=await fetch('/api/settings').then(r=>r.json());
+    const p=settings.ai_provider||'openrouter';
+    const m=p==='gemini'?settings.gemini_model:p==='openrouter'?settings.openrouter_model:'Ruwiki';
+    document.getElementById('info').textContent='Провайдер: '+p+' | '+m+' | Откройте /settings для изменения';
+  }catch(e){document.getElementById('info').textContent='Ошибка загрузки настроек: '+e;}
+}
+
+function log(msg,cls){
+  const d=document.getElementById('log-inner');
+  const el=document.createElement('div');
+  el.className='step '+(cls||'n');
+  el.textContent=msg;
+  d.appendChild(el);
+  d.parentElement.scrollTop=d.parentElement.scrollHeight;
+}
+
+function clearLog(){document.getElementById('log-inner').innerHTML='';}
+
+function switchTab(t){
+  ['log','screen','fill'].forEach(x=>{
+    document.getElementById('pane-'+x).classList.toggle('show',x===t);
+    document.getElementById('tab-'+x).classList.toggle('active',x===t);
+  });
+  if(t==='screen') refreshScreen();
+}
+
+async function refreshScreen(){
+  const pre=document.getElementById('screen-pre');
+  pre.textContent='Загрузка...';
+  const ctx=await fetch('/api/context').then(r=>r.json());
+  pre.textContent=formatScreen(ctx);
+}
+
+function formatScreen(ctx){
+  const sc=ctx.screen||{}, st=ctx.appState||{}, els=sc.elements||[];
+  let lines=[
+    'Tab: '+(ctx.activeTab||'?')+' | '+(sc.title||''),
+    'loggedIn='+st.loggedIn+' publishing='+st.isPublishing+' files='+st.stagedFilesCount,
+    'Content: '+(sc.bodyPreview||'').substring(0,250),
+    '\nElements ('+els.length+'):'
+  ];
+  els.slice(0,45).forEach(el=>{
+    let line='  '+(el.selector||'?')+' ['+el.tag+']';
+    if(el.disabled) line+=' [off]';
+    if(el.checked) line+=' ✓';
+    if(el.text) line+=" text='"+(el.text||'').substring(0,70)+"'";
+    if(el.value) line+=" val='"+(el.value||'').substring(0,60)+"'";
+    if(el.actions&&el.actions.length) line+=' ← '+el.actions.join('/');
+    lines.push(line);
+  });
+  lines.push('\nLogs:');
+  (ctx.recentLogs||[]).slice(-5).forEach(l=>lines.push('  '+l));
+  return lines.join('\n');
+}
+
+async function askAI(prompt){
+  const p=settings.ai_provider||'openrouter';
+  try{
+    if(p==='openrouter'){
+      const r=await fetch('https://openrouter.ai/api/v1/chat/completions',{
+        method:'POST',
+        headers:{'Authorization':'Bearer '+settings.openrouter_key,'Content-Type':'application/json','HTTP-Referer':'https://bookstore-agent','X-Title':'Bookstore Agent'},
+        body:JSON.stringify({model:settings.openrouter_model||'nvidia/llama-3.1-nemotron-70b-instruct:free',
+          messages:[{role:'system',content:SYSTEM},{role:'user',content:prompt}],
+          max_tokens:600,temperature:0.3})
+      });
+      return (await r.json()).choices?.[0]?.message?.content||null;
+    }
+    if(p==='gemini'){
+      const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+(settings.gemini_model||'gemini-2.0-flash')+':generateContent?key='+settings.gemini_key,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({contents:[{role:'user',parts:[{text:SYSTEM+'\n\n'+prompt}]}],
+          generationConfig:{maxOutputTokens:600,temperature:0.3}})
+      });
+      return (await r.json()).candidates?.[0]?.content?.parts?.[0]?.text||null;
+    }
+    if(p==='ruwiki'){
+      const r=await fetch('/api/ai/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:prompt})});
+      return (await r.json()).result||null;
+    }
+  }catch(e){log('AI ошибка: '+e,'e');}
+  return null;
+}
+
+function parseDecision(text){
+  if(!text) return null;
+  text=text.replace(/```json?\s*/g,'').replace(/```/g,'').trim();
+  try{return JSON.parse(text);}catch{}
+  const m=text.match(/\{[\s\S]*?\}/);
+  if(m){try{return JSON.parse(m[0]);}catch{}}
+  return null;
+}
+
+async function doAction(d){
+  const body={type:d.action};
+  if(d.selector!==undefined) body.selector=d.selector;
+  if(d.value!==undefined)    body.value=d.value;
+  if(d.tab!==undefined)      body.tab=d.tab;
+  if(d.ms!==undefined)       body.ms=d.ms;
+  if(d.text!==undefined)     body.text=d.text;
+  if(d.code!==undefined)     body.code=d.code;
+  body.waitMs=600;
+  return fetch('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json());
+}
+
+async function run(){
+  if(running) return;
+  const task=document.getElementById('task').value.trim();
+  if(!task){alert('Введите задачу');return;}
+  switchTab('log');
+  running=true;
+  document.getElementById('btnRun').disabled=true;
+  log('▶ Задача: '+task,'h');
+  await init();
+  const history=[], max=parseInt(settings.agent_max_steps)||25;
+  for(let step=1;step<=max&&running;step++){
+    const ctx=await fetch('/api/context').then(r=>r.json()).catch(e=>({error:String(e)}));
+    if(ctx.error){log('✗ Нет связи: '+ctx.error,'e');break;}
+    document.getElementById('screen-pre').textContent=formatScreen(ctx);
+    const histBlock=history.length?'\n\nИстория:\n'+history.slice(-5).map((h,i)=>(i+1)+'. '+h).join('\n'):'';
+    const prompt='Задача: '+task+'\n\n'+formatScreen(ctx)+histBlock+'\n\nЧто делать?';
+    log('['+step+'/'+max+'] Думаю...','i');
+    const resp=await askAI(prompt);
+    const d=parseDecision(resp);
+    if(!d){log('Нечитаемый ответ: '+(resp||'').substring(0,80),'w');continue;}
+    log('['+step+'/'+max+'] '+d.action+(d.reason?' — '+d.reason:''),d.action==='done'?'s':'n');
+    if(d.action==='done'){log('✓ Задача выполнена!','s');break;}
+    const r=await doAction(d);
+    if(r?.actionResult?.ok===false) log('  ✗ '+(r.actionResult.error||'?'),'w');
+    history.push(d.action+'('+(d.selector||d.tab||'')+') '+(d.reason||''));
+    await new Promise(res=>setTimeout(res,parseInt(settings.agent_step_delay_ms)||1500));
+  }
+  running=false;
+  document.getElementById('btnRun').disabled=false;
+}
+
+function stop(){running=false;log('■ Остановлено','w');document.getElementById('btnRun').disabled=false;}
+
+/* ── Заполнение полей ── */
+async function wikiSearch(q,lang){
+  lang=lang||settings.wiki_lang||'ru';
+  try{
+    const s=await fetch('https://'+lang+'.wikipedia.org/w/api.php?action=query&format=json&origin=*&list=search&srsearch='+encodeURIComponent(q)+'&srlimit=1').then(r=>r.json());
+    const hits=(s.query?.search)||[];
+    if(!hits.length){return lang!=='en'?wikiSearch(q,'en'):'';}
+    const title=hits[0].title;
+    const p=await fetch('https://'+lang+'.wikipedia.org/w/api.php?action=query&format=json&origin=*&titles='+encodeURIComponent(title)+'&prop=extracts&exintro=1&explaintext=1&exlimit=1').then(r=>r.json());
+    const pages=Object.values(p.query?.pages||{});
+    return (pages[0]?.extract||'').substring(0,2500);
+  }catch(e){return '';}
+}
+
+async function autoReadFields(){
+  const ctx=await fetch('/api/context').then(r=>r.json());
+  const els=ctx.screen?.elements||[];
+  let title='',author='';
+  els.forEach(el=>{
+    const s=(el.selector||'').toLowerCase(), v=el.value||'';
+    if(!title&&s.includes('title')&&v) title=v;
+    if(!author&&s.includes('author')&&v) author=v;
+  });
+  if(title) document.getElementById('f-title').value=title;
+  if(author) document.getElementById('f-author').value=author;
+}
+
+async function fillMode(){
+  const title=document.getElementById('f-title').value.trim();
+  const author=document.getElementById('f-author').value.trim();
+  const extra=document.getElementById('f-extra').value.trim();
+  if(!title||!author){alert('Введите название и автора');return;}
+  const st=document.getElementById('fill-status');
+  document.getElementById('fill-result').style.display='none';
+  await init();
+  st.textContent='Ищу данные в интернете...';
+  let context='';
+  // Wikipedia
+  if(settings.search_wikipedia!==false){
+    st.textContent='Wikipedia: биография автора...';
+    const bio=await wikiSearch(author);
+    if(bio) context+='\nБиография (Wikipedia):\n'+bio.substring(0,1200);
+    st.textContent='Wikipedia: данные книги...';
+    const book=await wikiSearch(title+' '+author)||(await wikiSearch(title));
+    if(book) context+='\nДанные книги (Wikipedia):\n'+book.substring(0,800);
+  }
+  // Ruwiki
+  if(settings.use_ruwiki_search!==false){
+    st.textContent='Ruwiki: биография...';
+    const rb=await fetch('/api/ai/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:'Биография писателя '+author})}).then(r=>r.json());
+    if(rb.result) context+='\nRuwiki биография:\n'+rb.result.substring(0,1200);
+    st.textContent='Ruwiki: данные книги...';
+    const rk=await fetch('/api/ai/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:'Книга «'+title+'» аннотация о чём'})}).then(r=>r.json());
+    if(rk.result) context+='\nRuwiki книга:\n'+rk.result.substring(0,800);
+  }
+  if(extra) context+='\nДоп. контекст: '+extra;
+  st.textContent='AI генерирует поля...';
+  const prompt='Заполни карточку книги. Книга: «'+title+'». Автор: '+author+'.'+context+'\n\nВерни ТОЛЬКО JSON:\n{"annotation":"...","author_bio":"...","keywords":"..."}';
+  const resp=await askAI(prompt);
+  const fields=parseDecision(resp);
+  if(!fields){st.textContent='AI не вернул данные. Проверьте настройки провайдера.';return;}
+  generatedFields=fields;
+  document.getElementById('fill-data').textContent=JSON.stringify(fields,null,2);
+  document.getElementById('fill-result').style.display='block';
+  st.textContent='Готово! Проверьте поля и нажмите "Применить".';
+}
+
+async function applyFields(){
+  if(!Object.keys(generatedFields).length) return;
+  switchTab('log');
+  const parts=Object.entries(generatedFields).filter(([,v])=>v).map(([k,v])=>k+': '+v);
+  document.getElementById('task').value='Найди и заполни поля на экране: '+parts.join('; ');
+  run();
+}
+
+init();
+</script></body></html>"""
+        return html(html)
     }
 
     // ── GET / и /docs — HTML справочник ──────────────────────────────────────
