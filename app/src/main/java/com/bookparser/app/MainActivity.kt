@@ -38,6 +38,7 @@ import org.json.JSONObject
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import com.bookparser.app.api.AIScreenObservationServer
+import com.bookparser.app.api.AIServerService
 
 class MainActivity : AppCompatActivity() {
 
@@ -118,31 +119,53 @@ class MainActivity : AppCompatActivity() {
     // ════════════════════════════════════════════════
 
     private fun startAiServer() {
+        val port = 8765
         try {
             aiServer = AIScreenObservationServer(
-                port = 8765,
+                port = port,
                 getActiveWebView = {
                     when {
-                        isGeminiAuthMode  -> "gemini"  to webViewGeminiAuth
-                        isForumVisible    -> "forum"   to webViewForum
+                        isGeminiAuthMode    -> "gemini"     to webViewGeminiAuth
+                        isForumVisible      -> "forum"      to webViewForum
                         isTranslatorVisible -> "translator" to webViewTranslator
-                        else              -> "parser"  to webViewParser
+                        else                -> "parser"     to webViewParser
                     }
                 },
-                runOnMain = { r -> runOnUiThread(r) },
+                runOnMain    = { r -> runOnUiThread(r) },
                 navigateToTab = { tab ->
                     when (tab) {
-                        "parser"     -> showParserWebView()
-                        "translator" -> showTranslatorWebView()
-                        "forum"      -> showForumWebView()
-                        else         -> AppLogger.log("AI: unknown tab '$tab'")
+                        "parser"     -> { showParserWebView();     aiServer?.pushEvent("tab_changed", "tab", "parser") }
+                        "translator" -> { showTranslatorWebView(); aiServer?.pushEvent("tab_changed", "tab", "translator") }
+                        "forum"      -> { showForumWebView();      aiServer?.pushEvent("tab_changed", "tab", "forum") }
+                        else         -> AppLogger.i(TAG, "AI: unknown tab '$tab'")
                     }
-                }
+                },
+                getAppState = {
+                    org.json.JSONObject().apply {
+                        put("isPublishing",      isPublishing)
+                        put("isWaitingForLogin", isWaitingForLogin)
+                        put("isForumVisible",    isForumVisible)
+                        put("isTranslatorVisible", isTranslatorVisible)
+                        val loggedIn = !getSavedCookies().isNullOrEmpty() &&
+                                       getSavedCookies()!!.contains("member_id")
+                        put("loggedIn",  loggedIn)
+                        put("username",  getSavedUsername() ?: "")
+                        put("stagedFilesCount", stagedBookFiles.size)
+                    }
+                },
+                getRecentLogs = { AppLogger.getRecent(30) }
             )
             aiServer?.start()
-            AppLogger.log("AI Screen Observation API started on http://localhost:8765")
+
+            // Start Foreground Service so the server survives background/screen-off
+            val svcIntent = Intent(this, AIServerService::class.java).apply {
+                putExtra("port", port)
+            }
+            startForegroundService(svcIntent)
+
+            AppLogger.i(TAG, "AI Screen API started — http://localhost:$port")
         } catch (e: Exception) {
-            AppLogger.log("AI server failed to start: ${e.message}")
+            AppLogger.e(TAG, "AI server failed to start: ${e.message}")
         }
     }
 
@@ -494,6 +517,10 @@ class MainActivity : AppCompatActivity() {
         val uname = getSavedUsername() ?: "User"
         showParserWebView()
         parserCallback("window.onAuthStateChanged(true, '${uname.escapeJs()}')")
+        aiServer?.pushEvent("login", org.json.JSONObject().apply {
+            put("loggedIn", true)
+            put("username", uname)
+        })
     }
 
     /**
@@ -1275,6 +1302,7 @@ class MainActivity : AppCompatActivity() {
                 // Step 1: Upload files через JS внутри WebView
                 withContext(Dispatchers.Main) {
                     parserCallback("window.onPublishProgress('upload_files', '')")
+                    aiServer?.pushEvent("publish_progress", "stage", "upload_files")
                 }
 
                 var coverAttached = false
@@ -1381,6 +1409,7 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     parserCallback("window.onPublishProgress('upload_done', '')")
                     parserCallback("window.onPublishProgress('fill_form', '')")
+                    aiServer?.pushEvent("publish_progress", "stage", "fill_form")
                 }
 
                 // Parse genres
@@ -1452,6 +1481,10 @@ class MainActivity : AppCompatActivity() {
                         if (!coverAttached && !bookAttached) append("Файлы не прикреплены — прикрепите вручную. ")
                     }
                     parserCallback("window.onPublishProgress('complete', '')")
+                    aiServer?.pushEvent("publish_progress", org.json.JSONObject().apply {
+                        put("stage",   "complete")
+                        put("message", uploadMsg.trim())
+                    })
                     Toast.makeText(this@MainActivity, "Форма заполнена. ${uploadMsg}Проверьте и отправьте!", Toast.LENGTH_LONG).show()
                 }
 
@@ -1459,6 +1492,10 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     val msg = (e.message ?: "Unknown error").escapeJs()
                     parserCallback("window.onPublishProgress('error', '$msg')")
+                    aiServer?.pushEvent("error", org.json.JSONObject().apply {
+                        put("stage",   "publish")
+                        put("message", e.message ?: "Unknown error")
+                    })
                     Toast.makeText(this@MainActivity, "Ошибка: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
@@ -1766,6 +1803,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         aiServer?.stop()
+        stopService(Intent(this, AIServerService::class.java))
         AppLogger.removeListener(logListener)
         webViewParser.destroy()
         webViewForum.destroy()

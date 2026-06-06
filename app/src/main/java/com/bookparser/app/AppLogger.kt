@@ -37,5 +37,7 @@ object AppLogger {
     fun removeListener(l: (String) -> Unit) { listeners.remove(l) }
 
     fun getAll(): String = lines.joinToString("\n")
+    fun getRecent(n: Int): List<String> = lines.takeLast(n)
+    fun log(msg: String) = i("App", msg)
     fun clear() { lines.clear() }
 }
