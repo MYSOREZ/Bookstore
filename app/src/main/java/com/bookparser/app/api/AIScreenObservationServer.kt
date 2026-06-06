@@ -1133,6 +1133,10 @@ async function testSearch(){
                 put("url", realUrl)
             })
         }
+        if (out.length() == 0) {
+            // Парсинг не нашёл результатов — вернём превью HTML для диагностики
+            throw java.io.IOException("DDG: парсинг не нашёл результатов. HTML: ${html.take(400).replace("\n"," ")}")
+        }
         return out
     }
 
