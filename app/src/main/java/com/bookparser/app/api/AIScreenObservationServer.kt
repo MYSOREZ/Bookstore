@@ -317,6 +317,30 @@ select option{background:#161b22}
 </div>
 
 <div class="card">
+<h2>Поиск в интернете</h2>
+<label>Поисковик</label>
+<select name="search_provider" id="srch">
+  <option value="duckduckgo">DuckDuckGo (бесплатно, без ключа)</option>
+  <option value="google">Google Custom Search (100/день, нужен ключ)</option>
+  <option value="brave">Brave Search (2000/месяц, нужен ключ)</option>
+</select>
+<div id="sec-google">
+<label>Google Search API Ключ</label>
+<input type="password" name="google_search_key" placeholder="AIza...">
+<label>Google CX (Search Engine ID)</label>
+<input type="text" name="google_cx" placeholder="1234567890:abc...">
+<div class="hint">Настройка: programmablesearchengine.google.com</div>
+</div>
+<div id="sec-brave">
+<label>Brave Search API Ключ</label>
+<input type="password" name="brave_search_key" placeholder="BSAx...">
+<div class="hint">Регистрация: api.search.brave.com (2000 запросов/месяц бесплатно)</div>
+</div>
+<label style="margin-top:4px"><input type="checkbox" name="search_web" value="true"> Использовать поисковик для биографий/аннотаций</label>
+<label><input type="checkbox" name="fetch_top_pages" value="1"> Загружать текст страниц (медленнее, но полнее)</label>
+</div>
+
+<div class="card">
 <h2>Поведение агента</h2>
 <label>Макс. шагов</label>
 <input type="number" name="agent_max_steps" value="25" min="5" max="100">
@@ -371,6 +395,21 @@ fill('use_ruwiki_search', S.use_ruwiki_search!==false);
 prov.value = S.ai_provider||'openrouter';
 applyVisibility();
 prov.addEventListener('change', applyVisibility);
+const srch = document.getElementById('srch');
+function applySrchVis(){
+  const p=srch.value;
+  document.getElementById('sec-google').style.display=p==='google'?'':'none';
+  document.getElementById('sec-brave').style.display=p==='brave'?'':'none';
+}
+fill('search_provider', S.search_provider||'duckduckgo');
+fill('google_search_key', S.google_search_key||'');
+fill('google_cx', S.google_cx||'');
+fill('brave_search_key', S.brave_search_key||'');
+fill('search_web', S.search_web!==false);
+fill('fetch_top_pages', !!S.fetch_top_pages);
+srch.value = S.search_provider||'duckduckgo';
+applySrchVis();
+srch.addEventListener('change', applySrchVis);
 
 f.addEventListener('submit', async e=>{
   e.preventDefault();

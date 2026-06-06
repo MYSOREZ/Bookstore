@@ -1,14 +1,24 @@
 {
   "server": "http://localhost:8765",
+
   "provider": "openrouter",
   "openrouter_key": "",
   "openrouter_model": "nvidia/llama-3.1-nemotron-70b-instruct:free",
   "gemini_key": "",
   "gemini_model": "gemini-2.0-flash",
+
+  "search_provider": "duckduckgo",
+  "google_search_key": "",
+  "google_cx": "",
+  "brave_search_key": "",
+
+  "search_web": true,
+  "search_wikipedia": true,
+  "use_ruwiki_search": true,
+  "fetch_top_pages": 1,
+  "wiki_lang": "ru",
+
   "max_steps": 25,
   "step_delay": 1.5,
-  "search_wikipedia": true,
-  "wiki_lang": "ru",
-  "use_ruwiki_search": true,
   "debug": false
 }
