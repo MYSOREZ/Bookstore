@@ -1102,9 +1102,9 @@ async function testSearch(){
     }
 
     private fun webSearchDDG(query: String): JSONArray {
-        val url = java.net.URL("https://html.duckduckgo.com/html/?q=${java.net.URLEncoder.encode(query, "UTF-8")}")
+        val url = java.net.URL("https://lite.duckduckgo.com/lite/?q=${java.net.URLEncoder.encode(query, "UTF-8")}")
         val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
-            setRequestProperty("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0")
+            setRequestProperty("User-Agent", "Mozilla/5.0 (Android 14; Mobile; rv:124.0) Gecko/124.0 Firefox/124.0")
             setRequestProperty("Accept-Language", "ru,en;q=0.9")
             setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
             connectTimeout = 8_000; readTimeout = 8_000
@@ -1121,22 +1121,23 @@ async function testSearch(){
             conn.disconnect()
         }
         val out = JSONArray()
-        html.split("result__body").drop(1).take(8).forEach { block ->
-            val title   = Regex("""class="result__a"[^>]*>([^<]+)""").find(block)?.groupValues?.getOrNull(1)?.trim() ?: return@forEach
-            val snippet = Regex("""class="result__snippet"[^>]*>(.*?)</""", RegexOption.DOT_MATCHES_ALL)
-                .find(block)?.groupValues?.getOrNull(1)?.let { Regex("<[^>]+>").replace(it, "").trim() } ?: ""
-            val realUrl = Regex("""uddg=([^"&]+)""").find(block)?.groupValues?.getOrNull(1)
-                ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrElse { it } } ?: ""
+        val titles   = Regex("""class="result-link"[^>]*href="([^"]*)"[^>]*>\s*([^<]+)""").findAll(html).take(8).toList()
+        val snippets = Regex("""class="result-snippet"[^>]*>(.*?)</(?:td|span)>""", RegexOption.DOT_MATCHES_ALL).findAll(html).take(8).toList()
+        titles.forEachIndexed { i, m ->
+            val title = m.groupValues[2].trim().takeIf { it.isNotBlank() } ?: return@forEachIndexed
+            val href  = m.groupValues[1]
+            val realUrl = Regex("""uddg=([^&"]+)""").find(href)?.groupValues?.getOrNull(1)
+                ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrElse { it } } ?: href
+            val snippet = snippets.getOrNull(i)?.groupValues?.getOrNull(1)
+                ?.let { Regex("<[^>]+>").replace(it, "").trim() } ?: ""
             out.put(JSONObject().apply {
                 put("title", htmlEntities(title))
                 put("snippet", htmlEntities(snippet))
                 put("url", realUrl)
             })
         }
-        if (out.length() == 0) {
-            // Парсинг не нашёл результатов — вернём превью HTML для диагностики
-            throw java.io.IOException("DDG: парсинг не нашёл результатов. HTML: ${html.take(400).replace("\n"," ")}")
-        }
+        if (out.length() == 0)
+            throw java.io.IOException("DDG lite: результаты не распознаны. HTML[400]: ${html.take(400).replace("\n"," ")}")
         return out
     }
 
