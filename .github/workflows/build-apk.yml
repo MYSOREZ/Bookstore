@@ -40,32 +40,19 @@ jobs:
           VERSION=$(grep -oP 'versionName "\K[^"]+' app/build.gradle)
           BUILD=${{ github.run_number }}
           cp app/build/outputs/apk/release/*.apk bookstore-v${VERSION}-build${BUILD}.apk
-          echo "APK_FILE=bookstore-v${VERSION}-build${BUILD}.apk" >> $GITHUB_ENV
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: bookstore-release-${{ github.run_number }}
-          path: bookstore-*.apk
-          retention-days: 30
-
-      # На каждый пуш в master — обновляем "latest" pre-release
       - name: Publish to latest release
-        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+        if: "!startsWith(github.ref, 'refs/tags/')"
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: "Latest build (v${{ env.VERSION }} #${{ github.run_number }})"
+          name: "Latest (v${{ env.VERSION }} #${{ github.run_number }})"
           prerelease: true
           make_latest: true
           files: bookstore-*.apk
-          body: |
-            Автосборка с ветки master.
-            Коммит: ${{ github.sha }}
-            Собрано: ${{ github.run_number }}
+          body: "Build #${{ github.run_number }} | commit: ${{ github.sha }}"
 
-      # На тег v* — создаём нормальный именованный релиз
       - name: Publish versioned release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
