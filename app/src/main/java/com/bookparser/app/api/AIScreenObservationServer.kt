@@ -461,6 +461,7 @@ a{color:#58a6ff;text-decoration:none}a:hover{text-decoration:underline}
 <div class="status">● Сервер работает | Вкладка: <b>$tab</b></div>
 <div class="nav">
   <a href="/docs">Справочник</a>
+  <a href="/agent">&#x1F916; Агент</a>
   <a href="/settings">Настройки AI</a>
   <a href="/api/status">Статус</a>
   <a href="/api/context">Контекст</a>
@@ -630,7 +631,7 @@ input:focus,select:focus{outline:none;border-color:#58a6ff}
 select option{background:#161b22}
 </style></head><body>
 <h1>⚙️ AI Агент — Настройки</h1>
-<div class="nav"><a href="/docs">Справочник</a><a href="/api/context">Контекст</a></div>
+<div class="nav"><a href="/docs">Справочник</a><a href="/agent">&#x1F916; Агент</a><a href="/api/context">Контекст</a></div>
 
 <form id="f">
 <div class="card">
@@ -714,6 +715,13 @@ select option{background:#161b22}
 <label style="margin-top:8px"><input type="checkbox" name="use_ruwiki_search" value="true"> Использовать Ruwiki для биографий</label>
 </div>
 
+<div class="card">
+<h2>Тест поиска</h2>
+<label>Поисковый запрос</label>
+<input type="text" id="test-q" value="Биография Льва Толстого" style="margin-bottom:8px">
+<button type="button" class="btn" style="background:#1f6feb;width:auto;padding:8px 16px;margin-bottom:10px" onclick="testSearch()">&#128269; Проверить поиск</button>
+<div id="test-out" style="font-size:.8em;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;color:#8b949e"></div>
+</div>
 <button type="submit" class="btn">💾 Сохранить настройки</button>
 <div class="msg" id="msg"></div>
 </form>
@@ -789,6 +797,25 @@ f.addEventListener('submit', async e=>{
     msg.className='msg err';msg.textContent='Ошибка: '+e;msg.style.display='block';
   }
 });
+
+async function testSearch(){
+  const q=document.getElementById('test-q').value.trim();
+  if(!q) return;
+  const out=document.getElementById('test-out');
+  out.style.color='#8b949e'; out.textContent='Ищу...';
+  try{
+    const r=await fetch('/api/tools/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})});
+    const j=await r.json();
+    if(j.ok&&j.results&&j.results.length){
+      out.style.color='#3fb950';
+      out.textContent='✓ Провайдер: '+j.provider+' | Найдено: '+j.results.length+'\n\n'+
+        j.results.slice(0,3).map((x,i)=>(i+1)+'. '+x.title+'\n   '+(x.snippet||'').substring(0,140)).join('\n\n');
+    }else{
+      out.style.color='#f85149';
+      out.textContent='✗ Ничего не найдено'+(j.error?' — '+j.error:'');
+    }
+  }catch(e){out.style.color='#f85149';out.textContent='✗ Ошибка: '+e;}
+}
 </script></body></html>""".replace("\$settingsJson", settingsJson.toString())
         return html(html)
     }
