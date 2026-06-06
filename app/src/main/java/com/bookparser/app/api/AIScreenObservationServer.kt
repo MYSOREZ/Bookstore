@@ -1121,26 +1121,23 @@ async function testSearch(){
             conn.disconnect()
         }
         val out = JSONArray()
-        // href может стоять до или после class — матчим тег целиком, потом проверяем атрибуты
-        val snippets = Regex("""class=.result-snippet[^>]*>\s*([^<]+)""")
-            .findAll(html).map { it.groupValues[1].trim() }.toList()
+        // Ищем по uddg= — стабильный маркер результатов DDG, не зависит от CSS классов
+        val linkRe    = Regex("""<a\b[^>]*href="[^"]*uddg=([^&"]+)[^"]*"[^>]*>([^<]+)</a>""")
+        val snippetRe = Regex("""class=.result-snippet[^>]*>\s*([^<]+)""")
+        val snippets  = snippetRe.findAll(html).map { it.groupValues[1].trim() }.toList()
         var idx = 0
-        Regex("""<a\b([^>]*)>([^<]*)</a>""").findAll(html).forEach { m ->
-            val attrs = m.groupValues[1]
-            if (!attrs.contains("result-link")) return@forEach
-            val title = m.groupValues[2].trim().takeIf { it.isNotBlank() } ?: return@forEach
-            val href  = Regex("""href="([^"]+)"""").find(attrs)?.groupValues?.getOrNull(1) ?: ""
-            val realUrl = Regex("""uddg=([^&"]+)""").find(href)?.groupValues?.getOrNull(1)
-                ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrElse { it } } ?: href
+        linkRe.findAll(html).forEach { m ->
+            val title  = m.groupValues[2].trim().takeIf { it.isNotBlank() } ?: return@forEach
+            val rawUrl = runCatching { java.net.URLDecoder.decode(m.groupValues[1], "UTF-8") }.getOrElse { m.groupValues[1] }
             if (out.length() < 8) out.put(JSONObject().apply {
                 put("title", htmlEntities(title))
                 put("snippet", htmlEntities(snippets.getOrNull(idx) ?: ""))
-                put("url", realUrl)
+                put("url", rawUrl)
             })
             idx++
         }
         if (out.length() == 0)
-            throw java.io.IOException("DDG lite: результаты не распознаны. HTML[400]: ${html.take(400).replace("\n"," ")}")
+            throw java.io.IOException("DDG: uddg= не найден в HTML. Превью: ${html.take(300).replace("\n"," ")}")
         return out
     }
 
