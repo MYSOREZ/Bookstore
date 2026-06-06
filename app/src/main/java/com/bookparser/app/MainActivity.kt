@@ -121,6 +121,8 @@ class MainActivity : AppCompatActivity() {
     private fun startAiServer() {
         val port = 8765
         try {
+            val ruwikiClient = com.bookparser.app.api.RuwikiAIClient()
+
             aiServer = AIScreenObservationServer(
                 port = port,
                 getActiveWebView = {
@@ -131,7 +133,7 @@ class MainActivity : AppCompatActivity() {
                         else                -> "parser"     to webViewParser
                     }
                 },
-                runOnMain    = { r -> runOnUiThread(r) },
+                runOnMain     = { r -> runOnUiThread(r) },
                 navigateToTab = { tab ->
                     when (tab) {
                         "parser"     -> { showParserWebView();     aiServer?.pushEvent("tab_changed", "tab", "parser") }
@@ -142,30 +144,71 @@ class MainActivity : AppCompatActivity() {
                 },
                 getAppState = {
                     org.json.JSONObject().apply {
-                        put("isPublishing",      isPublishing)
-                        put("isWaitingForLogin", isWaitingForLogin)
-                        put("isForumVisible",    isForumVisible)
+                        put("isPublishing",        isPublishing)
+                        put("isWaitingForLogin",   isWaitingForLogin)
+                        put("isForumVisible",      isForumVisible)
                         put("isTranslatorVisible", isTranslatorVisible)
                         val loggedIn = !getSavedCookies().isNullOrEmpty() &&
                                        getSavedCookies()!!.contains("member_id")
-                        put("loggedIn",  loggedIn)
-                        put("username",  getSavedUsername() ?: "")
+                        put("loggedIn",         loggedIn)
+                        put("username",         getSavedUsername() ?: "")
                         put("stagedFilesCount", stagedBookFiles.size)
                     }
                 },
-                getRecentLogs = { AppLogger.getRecent(30) }
+                getRecentLogs = { AppLogger.getRecent(30) },
+                getSettings = {
+                    val prefs = getSharedPreferences("ai_agent_settings", MODE_PRIVATE)
+                    org.json.JSONObject().apply {
+                        put("ai_provider",          prefs.getString("ai_provider", "openrouter"))
+                        put("openrouter_key",        prefs.getString("openrouter_key", ""))
+                        put("openrouter_model",      prefs.getString("openrouter_model", "nvidia/llama-3.1-nemotron-70b-instruct:free"))
+                        put("gemini_key",            prefs.getString("gemini_key",
+                                                         getSharedPreferences("settings", MODE_PRIVATE).getString("google_pa_key", "") ?: ""))
+                        put("gemini_model",          prefs.getString("gemini_model", "gemini-2.0-flash"))
+                        put("agent_max_steps",       prefs.getInt("agent_max_steps", 25))
+                        put("agent_step_delay_ms",   prefs.getInt("agent_step_delay_ms", 1500))
+                        put("wiki_lang",             prefs.getString("wiki_lang", "ru"))
+                        put("search_wikipedia",      prefs.getBoolean("search_wikipedia", true))
+                        put("use_ruwiki_search",     prefs.getBoolean("use_ruwiki_search", true))
+                    }
+                },
+                saveSettings = { json ->
+                    val prefs = getSharedPreferences("ai_agent_settings", MODE_PRIVATE).edit()
+                    json.keys().forEach { key ->
+                        when (val v = json.get(key)) {
+                            is Boolean -> prefs.putBoolean(key, v)
+                            is Int     -> prefs.putInt(key, v)
+                            is Double  -> prefs.putInt(key, v.toInt())
+                            else       -> prefs.putString(key, v.toString())
+                        }
+                    }
+                    prefs.apply()
+                },
+                getClipboard = {
+                    val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                            as android.content.ClipboardManager
+                    cm.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                },
+                setClipboard = { text ->
+                    val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                            as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("AI Agent", text))
+                },
+                searchRuwiki = { query, callback ->
+                    lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        val result = runCatching { ruwikiClient.ask(query) }.getOrNull() ?: ""
+                        callback(result)
+                    }
+                }
             )
             aiServer?.start()
 
-            // Start Foreground Service so the server survives background/screen-off
-            val svcIntent = Intent(this, AIServerService::class.java).apply {
-                putExtra("port", port)
-            }
+            val svcIntent = Intent(this, AIServerService::class.java).apply { putExtra("port", port) }
             startForegroundService(svcIntent)
 
-            AppLogger.i(TAG, "AI Screen API started — http://localhost:$port")
+            AppLogger.i(TAG, "AI Screen API запущен — откройте /docs в браузере по IP телефона:$port")
         } catch (e: Exception) {
-            AppLogger.e(TAG, "AI server failed to start: ${e.message}")
+            AppLogger.e(TAG, "AI сервер не запустился: ${e.message}")
         }
     }
 
