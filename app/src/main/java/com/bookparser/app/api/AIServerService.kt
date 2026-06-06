@@ -22,6 +22,10 @@ class AIServerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // Global cookie manager — all HttpURLConnection requests share one cookie jar (fixes SearXNG 403)
+        java.net.CookieHandler.setDefault(
+            java.net.CookieManager(null, java.net.CookiePolicy.ACCEPT_ALL)
+        )
         createNotificationChannel()
     }
 
