@@ -1103,21 +1103,35 @@ async function testSearch(){
 
     private fun webSearchDDG(query: String): JSONArray {
         // DDG блокирует не-браузерные запросы JS-челленджем → используем SearXNG.
-        // SearXNG — мета-поисковик с открытым JSON API, без ключа, без bot-защиты.
         val encoded = java.net.URLEncoder.encode(query, "UTF-8")
         val instances = listOf(
             "https://searx.be",
-            "https://searxng.site",
+            "https://search.sapti.me",
+            "https://paulgo.io",
+            "https://searx.fmac.xyz",
             "https://search.mdosch.de",
+            "https://searxng.site",
             "https://searx.prvcy.eu"
         )
         var lastError = "все инстансы недоступны"
         for (base in instances) {
             try {
+                // Шаг 1: получаем сессионную cookie (SearXNG требует её для JSON API)
+                val homeConn = (java.net.URL("$base/").openConnection() as java.net.HttpURLConnection).apply {
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Android 14; Mobile; rv:124.0) Gecko/124.0 Firefox/124.0")
+                    connectTimeout = 5_000; readTimeout = 5_000; instanceFollowRedirects = true
+                }
+                val cookies = homeConn.headerFields["Set-Cookie"]
+                    ?.joinToString("; ") { it.split(";")[0] } ?: ""
+                homeConn.disconnect()
+
+                // Шаг 2: поиск с cookie и Referer
                 val conn = (java.net.URL("$base/search?q=$encoded&format=json&language=ru-RU&categories=general")
                     .openConnection() as java.net.HttpURLConnection).apply {
                     setRequestProperty("User-Agent", "Mozilla/5.0 (Android 14; Mobile; rv:124.0) Gecko/124.0 Firefox/124.0")
-                    setRequestProperty("Accept", "application/json, text/javascript, */*")
+                    setRequestProperty("Accept", "application/json, */*")
+                    setRequestProperty("Referer", "$base/")
+                    if (cookies.isNotBlank()) setRequestProperty("Cookie", cookies)
                     connectTimeout = 8_000; readTimeout = 8_000; instanceFollowRedirects = true
                 }
                 val code = conn.responseCode
