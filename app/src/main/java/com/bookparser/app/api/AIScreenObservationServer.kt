@@ -1123,7 +1123,8 @@ async function testSearch(){
                 val code = conn.responseCode
                 if (code != 200) { conn.disconnect(); lastError = "HTTP $code от $base"; continue }
                 val resp = try { conn.inputStream.bufferedReader(Charsets.UTF_8).readText() } finally { conn.disconnect() }
-                val items = JSONObject(resp).optJSONArray("results") ?: run { lastError = "$base: нет поля results"; continue }
+                val items = JSONObject(resp).optJSONArray("results")
+                if (items == null) { lastError = "$base: нет поля results"; continue }
                 val out = JSONArray()
                 for (i in 0 until minOf(items.length(), 8)) {
                     val r = items.getJSONObject(i)
