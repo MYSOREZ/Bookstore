@@ -82,6 +82,7 @@ class AIScreenObservationServer(
             uri == "/api/action"   && session.method == Method.POST -> handleAction(session)
             uri == "/api/settings/save" && session.method == Method.POST -> handleSaveSettings(session)
             uri == "/api/ai/search" && session.method == Method.POST -> handleAiSearch(session)
+            uri == "/api/tools/search" && session.method == Method.POST -> handleToolsSearch(session)
             else -> json(Response.Status.NOT_FOUND, errorJson("unknown endpoint — see /docs"))
         }
     } catch (e: Exception) {
@@ -167,16 +168,18 @@ var settings={}, running=false, generatedFields={};
 
 const SYSTEM=`You control an Android book publishing app via API. Tabs: parser (load files), translator, forum (publish).
 Available actions (reply ONLY valid JSON, no markdown):
-  navigate  {tab:parser|translator|forum}
-  click     {selector:"#id"}
-  fill      {selector:"#id",value:"text"}
-  select_option {selector:"#id",value:"opt"}
-  scroll_to {selector:"#id"}
-  clipboard_write {text:"..."}
-  wait      {ms:1000}
-  js        {code:"..."}
-  done      {}
-Format: {"action":"...","selector":"...","value":"...","tab":"...","ms":0,"text":"...","code":"...","reason":"brief"}`;
+  search    {"action":"search","query":"search terms","reason":"why"}  ← search internet for info
+  navigate  {"action":"navigate","tab":"parser|translator|forum"}
+  click     {"action":"click","selector":"#id"}
+  fill      {"action":"fill","selector":"#id","value":"text"}
+  select_option {"action":"select_option","selector":"#id","value":"opt"}
+  scroll_to {"action":"scroll_to","selector":"#id"}
+  clipboard_write {"action":"clipboard_write","text":"..."}
+  wait      {"action":"wait","ms":1000}
+  js        {"action":"js","code":"..."}
+  done      {"action":"done","reason":"task complete"}
+RULE: When filling book fields (biography, annotation, keywords) — use search FIRST to get real data from internet. After getting search results they appear in history — use them to fill fields.
+Reply with ONE action per message. No markdown, no explanation outside JSON.`;
 
 async function init(){
   try{
@@ -233,6 +236,13 @@ function formatScreen(ctx){
   lines.push('\nLogs:');
   (ctx.recentLogs||[]).slice(-5).forEach(l=>lines.push('  '+l));
   return lines.join('\n');
+}
+
+async function toolSearch(query){
+  try{
+    const r=await fetch('/api/tools/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query})});
+    return await r.json();
+  }catch(e){return {ok:false,results:[],error:String(e)};}
 }
 
 async function askAI(prompt){
@@ -307,6 +317,20 @@ async function run(){
     if(!d){log('Нечитаемый ответ: '+(resp||'').substring(0,80),'w');continue;}
     log('['+step+'/'+max+'] '+d.action+(d.reason?' — '+d.reason:''),d.action==='done'?'s':'n');
     if(d.action==='done'){log('✓ Задача выполнена!','s');break;}
+    if(d.action==='search'){
+      const q=d.query||d.reason||'';
+      log('  &#128269; Поиск: '+q,'i');
+      const sr=await toolSearch(q);
+      if(sr.results&&sr.results.length){
+        const snippets=sr.results.slice(0,4).map((r,i)=>(i+1)+'. '+r.title+': '+r.snippet).join('\n');
+        history.push('SEARCH("'+q+'")\n'+snippets.substring(0,900));
+        log('  ✓ Найдено '+sr.results.length+' результатов','s');
+      }else{
+        history.push('SEARCH("'+q+'") — ничего не найдено'+(sr.error?' ('+sr.error+')':''));
+        log('  ✗ Ничего не найдено','w');
+      }
+      continue;
+    }
     const r=await doAction(d);
     if(r?.actionResult?.ok===false) log('  ✗ '+(r.actionResult.error||'?'),'w');
     history.push(d.action+'('+(d.selector||d.tab||'')+') '+(d.reason||''));
@@ -355,6 +379,15 @@ async function fillMode(){
   await init();
   st.textContent='Ищу данные в интернете...';
   let context='';
+  // Веб-поиск (DDG/Google/Brave) — через прокси /api/tools/search (нет CORS)
+  if(settings.search_web!==false){
+    st.textContent='Поиск: биография '+author+'...';
+    const sb=await toolSearch('биография писателя '+author);
+    if(sb.results&&sb.results.length) context+='\nВеб-поиск биография:\n'+sb.results.slice(0,3).map(r=>r.title+': '+r.snippet).join('\n').substring(0,1000);
+    st.textContent='Поиск: книга «'+title+'»...';
+    const sk=await toolSearch('книга «'+title+'» '+author+' аннотация о чём');
+    if(sk.results&&sk.results.length) context+='\nВеб-поиск книга:\n'+sk.results.slice(0,3).map(r=>r.title+': '+r.snippet).join('\n').substring(0,700);
+  }
   // Wikipedia
   if(settings.search_wikipedia!==false){
     st.textContent='Wikipedia: биография автора...';
@@ -486,6 +519,16 @@ curl -X POST http://ТЕЛЕФОН_IP:8765/api/action \
 # Выполнить JavaScript
 curl -X POST http://ТЕЛЕФОН_IP:8765/api/action \
   -d '{"type":"js","code":"document.title"}'</pre></div>
+
+<div class="ep"><span class="m post">POST</span><span class="path">/api/tools/search</span>
+<div class="desc">Веб-поиск через Android (нет CORS). AI вызывает как инструмент. Провайдер берётся из настроек (DDG/Google/Brave).</div>
+<pre>curl -X POST http://ТЕЛЕФОН_IP:8765/api/tools/search \
+  -d '{"query":"Биография Льва Толстого"}'
+# → {"ok":true,"provider":"duckduckgo","results":[{"title":"...","snippet":"...","url":"..."}]}
+
+# Переопределить провайдер разово:
+curl -X POST http://ТЕЛЕФОН_IP:8765/api/tools/search \
+  -d '{"query":"...","provider":"brave"}'</pre></div>
 
 <div class="ep"><span class="m post">POST</span><span class="path">/api/ai/search</span>
 <div class="desc">Поиск через Ruwiki AI (встроен в приложение, имеет доступ к интернету)</div>
@@ -950,6 +993,107 @@ f.addEventListener('submit', async e=>{
             put("result", result ?: "")
         }.toString())
     }
+
+    // ── POST /api/tools/search — прокси поиска (нет CORS с Android) ─────────
+
+    private fun handleToolsSearch(session: IHTTPSession): Response {
+        val body = HashMap<String, String>()
+        session.parseBody(body)
+        val raw = body["postData"]?.takeIf { it.isNotBlank() }
+            ?: return json(Response.Status.BAD_REQUEST, errorJson("empty body"))
+        val req = runCatching { JSONObject(raw) }.getOrElse {
+            return json(Response.Status.BAD_REQUEST, errorJson("invalid JSON"))
+        }
+        val query = req.optString("query").takeIf { it.isNotBlank() }
+            ?: return json(Response.Status.BAD_REQUEST, errorJson("missing 'query'"))
+        val cfg = getSettings()
+        val provider = req.optString("provider").takeIf { it.isNotBlank() }
+            ?: cfg.optString("search_provider", "duckduckgo")
+        return try {
+            val results = when (provider) {
+                "google" -> webSearchGoogle(query, cfg)
+                "brave"  -> webSearchBrave(query, cfg)
+                else     -> webSearchDDG(query)
+            }
+            json(Response.Status.OK, JSONObject().apply {
+                put("ok", true); put("query", query); put("provider", provider); put("results", results)
+            }.toString())
+        } catch (e: Exception) {
+            json(Response.Status.OK, JSONObject().apply {
+                put("ok", false); put("error", e.message ?: "search failed"); put("results", JSONArray())
+            }.toString())
+        }
+    }
+
+    private fun webSearchDDG(query: String): JSONArray {
+        val url = java.net.URL("https://html.duckduckgo.com/html/?q=${java.net.URLEncoder.encode(query, "UTF-8")}")
+        val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+            setRequestProperty("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0")
+            setRequestProperty("Accept-Language", "ru,en;q=0.9")
+            connectTimeout = 12_000; readTimeout = 15_000
+        }
+        val html = conn.inputStream.bufferedReader(Charsets.UTF_8).readText()
+        conn.disconnect()
+        val out = JSONArray()
+        html.split("result__body").drop(1).take(8).forEach { block ->
+            val title   = Regex("""class="result__a"[^>]*>([^<]+)""").find(block)?.groupValues?.getOrNull(1)?.trim() ?: return@forEach
+            val snippet = Regex("""class="result__snippet"[^>]*>(.*?)</""", RegexOption.DOT_MATCHES_ALL)
+                .find(block)?.groupValues?.getOrNull(1)?.let { Regex("<[^>]+>").replace(it, "").trim() } ?: ""
+            val realUrl = Regex("""uddg=([^"&]+)""").find(block)?.groupValues?.getOrNull(1)
+                ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrElse { it } } ?: ""
+            out.put(JSONObject().apply {
+                put("title", htmlEntities(title))
+                put("snippet", htmlEntities(snippet))
+                put("url", realUrl)
+            })
+        }
+        return out
+    }
+
+    private fun webSearchGoogle(query: String, cfg: JSONObject): JSONArray {
+        val key = cfg.optString("google_search_key").takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("Google Search key not set")
+        val cx  = cfg.optString("google_cx").takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("Google CX not set")
+        val url = java.net.URL(
+            "https://www.googleapis.com/customsearch/v1?q=${java.net.URLEncoder.encode(query,"UTF-8")}&key=$key&cx=$cx&num=5"
+        )
+        val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+            connectTimeout = 10_000; readTimeout = 15_000
+        }
+        val resp = conn.inputStream.bufferedReader(Charsets.UTF_8).readText(); conn.disconnect()
+        val items = JSONObject(resp).optJSONArray("items") ?: return JSONArray()
+        val out = JSONArray()
+        for (i in 0 until minOf(items.length(), 5)) items.getJSONObject(i).let {
+            out.put(JSONObject().apply { put("title", it.optString("title")); put("snippet", it.optString("snippet")); put("url", it.optString("link")) })
+        }
+        return out
+    }
+
+    private fun webSearchBrave(query: String, cfg: JSONObject): JSONArray {
+        val key = cfg.optString("brave_search_key").takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("Brave Search key not set")
+        val url = java.net.URL(
+            "https://api.search.brave.com/res/v1/web/search?q=${java.net.URLEncoder.encode(query,"UTF-8")}&count=5"
+        )
+        val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("X-Subscription-Token", key)
+            connectTimeout = 10_000; readTimeout = 15_000
+        }
+        val inStream = if (conn.contentEncoding == "gzip") java.util.zip.GZIPInputStream(conn.inputStream) else conn.inputStream
+        val resp = inStream.bufferedReader(Charsets.UTF_8).readText(); conn.disconnect()
+        val webRes = JSONObject(resp).optJSONObject("web")?.optJSONArray("results") ?: return JSONArray()
+        val out = JSONArray()
+        for (i in 0 until minOf(webRes.length(), 5)) webRes.getJSONObject(i).let {
+            out.put(JSONObject().apply { put("title", it.optString("title")); put("snippet", it.optString("description")); put("url", it.optString("url")) })
+        }
+        return out
+    }
+
+    private fun htmlEntities(s: String) = s
+        .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+        .replace("&quot;", "\"").replace("&#39;", "'").replace("&nbsp;", " ")
 
     // ── actionResponse ────────────────────────────────────────────────────────
 
