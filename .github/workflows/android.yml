@@ -8,7 +8,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Разрешение на создание релизов и загрузку файлов
+      contents: write
 
     steps:
     - name: Checkout code
@@ -36,25 +36,25 @@ jobs:
         RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
       run: ./gradlew assembleRelease
 
-    # Чтение версии из build.gradle для именования артефактов и тегов
+    # Исправленное чтение версии с экспортом в GITHUB_OUTPUT
     - name: Get Version Name
       id: get_version
       run: |
         VERSION_NAME=$(grep "versionName" app/build.gradle | awk '{print $2}' | tr -d '"')
-        echo "VERSION=$VERSION_NAME" >> $GITHUB_ENV
+        echo "VERSION=$VERSION_NAME" >> $GITHUB_OUTPUT
         echo "Version found: $VERSION_NAME"
 
     - name: Upload APK to Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: Bookstore-${{ env.VERSION }}-APK
+        name: Bookstore-${{ steps.get_version.outputs.VERSION }}-APK
         path: app/build/outputs/apk/release/Bookstore-*.apk
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: v${{ env.VERSION }}
-        name: Release ${{ env.VERSION }}
+        tag_name: v${{ steps.get_version.outputs.VERSION }}
+        name: Release ${{ steps.get_version.outputs.VERSION }}
         draft: false
         prerelease: false
         files: app/build/outputs/apk/release/Bookstore-*.apk
