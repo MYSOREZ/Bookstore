@@ -1170,13 +1170,35 @@ function transliterate(t) {
     .replace(/[^\w.\-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
 }
 
-// callNative — мост к Android или fetch-fallback
-function callNative(url, method, body, headers, callback) {
-  if (window.AndroidBridge && AndroidBridge.httpRequest) {
-    try {
-      AndroidBridge.httpRequest(url, method, body || '', JSON.stringify(headers || {}), (res, err) => callback(res, err));
-    } catch(e) { callback('', e.message); }
+// callNative — мост к Android (nativeRequest + callback-ID) или fetch-fallback
+const _nativeCbs = {};
+let _nativeCbId = 0;
+
+// Java вызывает эту функцию когда HTTP-запрос завершён
+window.onNativeResponse = function(id, errB64, dataB64) {
+  const cb = _nativeCbs[id];
+  if (!cb) return;
+  delete _nativeCbs[id];
+  if (errB64) {
+    try { cb('', atob(errB64)); } catch(e) { cb('', String(errB64)); }
   } else {
+    try { cb(atob(dataB64), null); } catch(e) { cb('', 'decode error'); }
+  }
+};
+
+function callNative(url, method, body, headers, callback) {
+  if (window.AndroidBridge && AndroidBridge.nativeRequest) {
+    // Используем nativeRequest — реальный Java-метод с ID-паттерном callback
+    const id = 'nc' + (++_nativeCbId);
+    _nativeCbs[id] = callback;
+    try {
+      AndroidBridge.nativeRequest(url, method, body || '', JSON.stringify(headers || {}), id);
+    } catch(e) {
+      delete _nativeCbs[id];
+      callback('', e.message);
+    }
+  } else {
+    // Fallback: fetch (для браузерного тестирования)
     const opts = { method, headers: headers || {} };
     if (body && method !== 'GET') opts.body = body;
     fetch(url, opts)
