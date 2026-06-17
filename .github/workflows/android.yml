@@ -1,20 +1,20 @@
-name: Build Android APK
+name: Build and Release Android APK
 
 on:
   push:
-    branches: [ "master" ]
-  pull_request:
     branches: [ "master" ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Разрешение на создание релизов и загрузку файлов
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: set up JDK 17
+    - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
@@ -36,8 +36,27 @@ jobs:
         RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
       run: ./gradlew assembleRelease
 
-    - name: Upload APK
+    # Чтение версии из build.gradle для именования артефактов и тегов
+    - name: Get Version Name
+      id: get_version
+      run: |
+        VERSION_NAME=$(grep "versionName" app/build.gradle | awk '{print $2}' | tr -d '"')
+        echo "VERSION=$VERSION_NAME" >> $GITHUB_ENV
+        echo "Version found: $VERSION_NAME"
+
+    - name: Upload APK to Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: Bookstore-APK
+        name: Bookstore-${{ env.VERSION }}-APK
         path: app/build/outputs/apk/release/Bookstore-*.apk
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ env.VERSION }}
+        name: Release ${{ env.VERSION }}
+        draft: false
+        prerelease: false
+        files: app/build/outputs/apk/release/Bookstore-*.apk
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
