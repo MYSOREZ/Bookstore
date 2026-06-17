@@ -36,25 +36,24 @@ jobs:
         RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
       run: ./gradlew assembleRelease
 
-    # Исправленное чтение версии с экспортом в GITHUB_OUTPUT
+    # Чтение версии в классический файл окружения, который всегда работает надежно
     - name: Get Version Name
-      id: get_version
       run: |
         VERSION_NAME=$(grep "versionName" app/build.gradle | awk '{print $2}' | tr -d '"')
-        echo "VERSION=$VERSION_NAME" >> $GITHUB_OUTPUT
+        echo "VERSION=$VERSION_NAME" >> $GITHUB_ENV
         echo "Version found: $VERSION_NAME"
 
     - name: Upload APK to Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: Bookstore-${{ steps.get_version.outputs.VERSION }}-APK
+        name: Bookstore-APK
         path: app/build/outputs/apk/release/Bookstore-*.apk
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: v${{ steps.get_version.outputs.VERSION }}
-        name: Release ${{ steps.get_version.outputs.VERSION }}
+        tag_name: v${{ env.VERSION }}
+        name: Release ${{ env.VERSION }}
         draft: false
         prerelease: false
         files: app/build/outputs/apk/release/Bookstore-*.apk
