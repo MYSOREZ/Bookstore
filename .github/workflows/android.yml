@@ -30,6 +30,10 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
+    - name: Encrypt translator.html
+      shell: pwsh
+      run: ./encrypt_translator.ps1
+
     - name: Build with Gradle
       env:
         RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
