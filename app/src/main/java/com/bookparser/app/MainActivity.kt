@@ -321,6 +321,9 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onConsoleMessage(cm: android.webkit.ConsoleMessage?): Boolean {
+                if (cm != null && cm.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
+                    AppLogger.e("WebViewTR", "${cm.message()} (${cm.sourceId()}:${cm.lineNumber()})")
+                }
                 return true
             }
         }

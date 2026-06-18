@@ -82,14 +82,13 @@ body {
   border-radius: 16px;
   padding: 16px 12px;
   text-align: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: rgba(139, 92, 246, 0.2);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
 }
-.eng-card::after {
-  content: ''; position: absolute; inset: 0;
-  background: var(--primary-g); opacity: 0; transition: opacity 0.3s; z-index: 0;
-}
+.eng-card:active { transform: scale(0.97); background: rgba(139, 92, 246, 0.08); }
 .eng-card.sel {
   border-color: var(--primary);
   background: rgba(139, 92, 246, 0.1);
@@ -190,25 +189,25 @@ select.sel-inp {
   <!-- ENGINE -->
   <div class="label">Движок перевода</div>
   <div class="eng-row">
-    <div class="eng-card sel" onclick="selEng('gemini')" id="eng-gemini">
+    <div class="eng-card sel" id="eng-gemini">
       <span class="ck">✓</span>
       <span class="eng-icon">✨</span>
       <div class="eng-name">Gemini AI</div>
       <span class="eng-tag tag-key">API Key</span>
     </div>
-    <div class="eng-card" onclick="selEng('google_pa')" id="eng-google_pa">
+    <div class="eng-card" id="eng-google_pa">
       <span class="ck">✓</span>
       <span class="eng-icon">🌐</span>
       <div class="eng-name">Google PA</div>
       <span class="eng-tag tag-free">Calibre</span>
     </div>
-    <div class="eng-card" onclick="selEng('edge')" id="eng-edge">
+    <div class="eng-card" id="eng-edge">
       <span class="ck">✓</span>
       <span class="eng-icon">🔷</span>
       <div class="eng-name">Edge / MS</div>
       <span class="eng-tag tag-free">Бесплатно</span>
     </div>
-    <div class="eng-card" onclick="selEng('custom')" id="eng-custom">
+    <div class="eng-card" id="eng-custom">
       <span class="ck">✓</span>
       <span class="eng-icon">🤖</span>
       <div class="eng-name">Custom AI</div>
@@ -342,6 +341,38 @@ function selEng(e) {
   document.getElementById('geminiSettings').style.display = (e === 'gemini') ? 'block' : 'none';
   document.getElementById('customSettings').style.display = (e === 'custom') ? 'block' : 'none';
 }
+
+// Перехват JS-ошибок для отладки в Android
+window.onerror = function(msg, src, line, col, err) {
+  if (window.AndroidBridge && AndroidBridge.log) {
+    AndroidBridge.log('[TR ERROR] ' + msg + ' (' + line + ':' + col + ')');
+  }
+  return false;
+};
+
+// Навешиваем клики через addEventListener (надёжно в Android WebView)
+document.addEventListener('DOMContentLoaded', function() {
+  var engMap = {
+    'eng-gemini':    'gemini',
+    'eng-google_pa': 'google_pa',
+    'eng-edge':      'edge',
+    'eng-custom':    'custom'
+  };
+  Object.keys(engMap).forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('click', function(ev) {
+        ev.stopPropagation();
+        selEng(engMap[id]);
+      });
+      el.addEventListener('touchend', function(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        selEng(engMap[id]);
+      }, { passive: false });
+    }
+  });
+});
 
 // ═══════════════════════════════════════
 //  FILE HANDLING
@@ -920,17 +951,11 @@ Do not explain terms, do not add notes, and do not add any prefix or suffix.
 Preserve formatting and line breaks exactly.
 IMPORTANT: If the text contains ◆◆◆◆ separators, keep EXACTLY the same number of ◆◆◆◆ separators in your translation.
 CRITICAL: Any placeholders like [[TG_0]] MUST be preserved EXACTLY in the translated output and placed correctly according to the sentence structure.`;
-  if (isVision) p += `
-This is an image (scan or diagram). Extract and translate all text from it accurately.`;
+  if (isVision) p += `\nThis is an image (scan or diagram). Extract and translate all text from it accurately.`;
   if (S.glossary && S.glossary.length > 0) {
-    p += `
-Use the following glossary if applicable:
-` + S.glossary.map(g => `- ${g.from} -> ${g.to}`).join('
-');
+    p += '\nUse the following glossary if applicable:\n' + S.glossary.map(g => `- ${g.from} -> ${g.to}`).join('\n');
   }
-  return p + '
-
-';
+  return p + '\n\n';
 }
 // ═══════════════════════════════════════
 //  DOWNLOAD: FB2
