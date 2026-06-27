@@ -219,6 +219,16 @@ select.sel-inp {
   <div class="label">Языки</div>
   <div class="card">
     <select class="sel-inp" id="langPair">
+      <option value="auto|en" selected>🌐 Авто → 🇬🇧 Английский</option>
+      <option value="ru|en">🇷🇺 Русский → 🇬🇧 Английский</option>
+      <option value="fr|en">🇫🇷 Французский → 🇬🇧 Английский</option>
+      <option value="de|en">🇩🇪 Немецкий → 🇬🇧 Английский</option>
+      <option value="es|en">🇪🇸 Испанский → 🇬🇧 Английский</option>
+      <option value="it|en">🇮🇹 Итальянский → 🇬🇧 Английский</option>
+      <option value="zh|en">🇨🇳 Китайский → 🇬🇧 Английский</option>
+      <option value="ja|en">🇯🇵 Японский → 🇬🇧 Английский</option>
+      <option value="uk|en">🇺🇦 Украинский → 🇬🇧 Английский</option>
+      <option value="auto|ru">🌐 Авто → 🇷🇺 Русский</option>
       <option value="fr|ru">🇫🇷 Французский → 🇷🇺 Русский</option>
       <option value="en|ru">🇬🇧 Английский → 🇷🇺 Русский</option>
       <option value="de|ru">🇩🇪 Немецкий → 🇷🇺 Русский</option>
@@ -227,7 +237,6 @@ select.sel-inp {
       <option value="zh|ru">🇨🇳 Китайский → 🇷🇺 Русский</option>
       <option value="ja|ru">🇯🇵 Японский → 🇷🇺 Русский</option>
       <option value="uk|ru">🇺🇦 Украинский → 🇷🇺 Русский</option>
-      <option value="auto|ru">🌐 Авто → 🇷🇺 Русский</option>
     </select>
   </div>
 
@@ -312,7 +321,7 @@ select.sel-inp {
 // ═══════════════════════════════════════
 const S = {
   engine: 'gemini',
-  langPair: 'fr|ru',
+  langPair: 'auto|en',
   blocks: [],
   bookMeta: {},
   fb2Doc: null,
@@ -389,6 +398,7 @@ async function loadFile(file) {
   S.epubData = null;
   S.blocks = [];
   S.bookMeta = {};
+  S.bookMeta.originalFileName = file.name;
 
   try {
     const lo = file.name.toLowerCase();
@@ -963,9 +973,15 @@ CRITICAL: Any placeholders like [[TG_0]] MUST be preserved EXACTLY in the transl
 async function dlFb2() {
   const [src, dst] = S.langPair.split('|');
   showStatus('⏳ Подготовка FB2.ZIP…', 'info');
-  const tTitle = await translateSingle(S.bookMeta.title || 'Untitled');
-  const tAuthor = await translateSingle(S.bookMeta.author || 'Unknown');
-  const baseName = transliterate(`${tAuthor} - ${tTitle}`);
+  const origName = S.bookMeta.originalFileName || '';
+  const origBase = origName.replace(/\.(fb2|zip|epub|pdf)$/i, '');
+  const hasRealTitle = S.bookMeta.title && S.bookMeta.title !== 'Без названия';
+  const hasRealAuthor = S.bookMeta.author && S.bookMeta.author !== 'Неизвестный автор';
+  const tTitle = await translateSingle(hasRealTitle ? S.bookMeta.title : (origBase || 'Untitled'));
+  const tAuthor = await translateSingle(hasRealAuthor ? S.bookMeta.author : 'Unknown');
+  const baseName = (hasRealTitle || hasRealAuthor)
+    ? transliterate(`${tAuthor} - ${tTitle}`)
+    : transliterate(origBase || 'book');
 
   if (S.fb2Doc) {
     // Патчим заголовок
@@ -1055,9 +1071,15 @@ ${coverBin}
 async function dlEpub() {
   const [src, dst] = S.langPair.split('|');
   showStatus('⏳ Подготовка EPUB…', 'info');
-  const tTitle = await translateSingle(S.bookMeta.title || 'Untitled');
-  const tAuthor = await translateSingle(S.bookMeta.author || 'Unknown');
-  const baseName = transliterate(`${tAuthor} - ${tTitle}`);
+  const origName = S.bookMeta.originalFileName || '';
+  const origBase = origName.replace(/\.(fb2|zip|epub|pdf)$/i, '');
+  const hasRealTitle = S.bookMeta.title && S.bookMeta.title !== 'Без названия';
+  const hasRealAuthor = S.bookMeta.author && S.bookMeta.author !== 'Неизвестный автор';
+  const tTitle = await translateSingle(hasRealTitle ? S.bookMeta.title : (origBase || 'Untitled'));
+  const tAuthor = await translateSingle(hasRealAuthor ? S.bookMeta.author : 'Unknown');
+  const baseName = (hasRealTitle || hasRealAuthor)
+    ? transliterate(`${tAuthor} - ${tTitle}`)
+    : transliterate(origBase || 'book');
 
   if (S.epubData) {
     // Патчим переведённые DOM-узлы
@@ -1136,9 +1158,15 @@ ${text.split('\n\n').filter(p=>p.trim()).map(p => `<p>${esc(p.trim())}</p>`).joi
 async function dlTxt() {
   const text = document.getElementById('resText').value;
   if (!text) { showStatus('❌ Нет текста для сохранения', 'err'); return; }
-  const tTitle = await translateSingle(S.bookMeta.title || 'translated');
-  const tAuthor = await translateSingle(S.bookMeta.author || 'author');
-  const baseName = transliterate(`${tAuthor} - ${tTitle}`);
+  const origName = S.bookMeta.originalFileName || '';
+  const origBase = origName.replace(/\.(fb2|zip|epub|pdf)$/i, '');
+  const hasRealTitle = S.bookMeta.title && S.bookMeta.title !== 'Без названия';
+  const hasRealAuthor = S.bookMeta.author && S.bookMeta.author !== 'Неизвестный автор';
+  const tTitle = await translateSingle(hasRealTitle ? S.bookMeta.title : (origBase || 'translated'));
+  const tAuthor = await translateSingle(hasRealAuthor ? S.bookMeta.author : 'author');
+  const baseName = (hasRealTitle || hasRealAuthor)
+    ? transliterate(`${tAuthor} - ${tTitle}`)
+    : transliterate(origBase || 'book');
   const encoder = new TextEncoder();
   const bytes = encoder.encode(text);
   let bin = '';
@@ -1205,9 +1233,15 @@ window.onNativeResponse = function(id, errB64, dataB64) {
   if (!cb) return;
   delete _nativeCbs[id];
   if (errB64) {
-    try { cb('', atob(errB64)); } catch(e) { cb('', String(errB64)); }
+    try {
+      const binStr = atob(errB64);
+      cb('', decodeURIComponent(escape(binStr)));
+    } catch(e) { cb('', String(errB64)); }
   } else {
-    try { cb(atob(dataB64), null); } catch(e) { cb('', 'decode error'); }
+    try {
+      const binStr = atob(dataB64);
+      cb(decodeURIComponent(escape(binStr)), null);
+    } catch(e) { cb('', 'decode error'); }
   }
 };
 
