@@ -696,7 +696,10 @@
             <h1>Книжная лавка</h1>
             <span>Комбайн для Книгохранилища</span>
         </div>
-        <button class="btn-translate-nav" onclick="AndroidBridge.openTranslator()">🌐 Переводчик</button>
+        <div class="header-buttons" style="display:flex; flex-direction:column; gap:6px;">
+            <button class="btn-translate-nav" onclick="AndroidBridge.openTranslator()">🌐 Переводчик</button>
+            <button class="btn-translate-nav" onclick="AndroidBridge.openSearchTab('')" style="background: linear-gradient(135deg, #0ea5e9, #3b82f6);">🔍 Поиск книг</button>
+        </div>
     </div>
 
     <!-- STATUS -->
@@ -879,6 +882,15 @@
         <div class="card">
             <h3>BB-код для 4PDA</h3>
             <textarea id="bbArea" class="bb-box" placeholder="Загрузите книги на вкладке «Загрузка»…"></textarea>
+        </div>
+
+        <div class="card" style="margin-bottom: 16px;">
+            <h3 style="margin-top:0; margin-bottom:8px; font-size:14px;">Формат публикации (для FB2)</h3>
+            <div style="display:flex; gap:16px; align-items:center; font-size:13px;">
+                <label style="cursor:pointer;"><input type="radio" name="publishFormat" value="fb2" checked> Как есть (FB2)</label>
+                <label style="cursor:pointer;"><input type="radio" name="publishFormat" value="epub"> Сконвертировать в EPUB</label>
+                <label style="cursor:pointer;"><input type="radio" name="publishFormat" value="both"> FB2 + EPUB</label>
+            </div>
         </div>
 
         <div style="margin:0 12px 16px; display: flex; flex-wrap: wrap; gap: 8px;">
@@ -1285,7 +1297,7 @@
 
             currentBook = {
                 author: '', title: '', series: '', seriesNum: '', annotation: '',
-                genre: '', genreCode: '', lang: '', year: '',
+                genre: '', genreCode: '', lang: '', year: '', selected: true,
                 cover: { data: null, mime: 'image/jpeg' },
                 originalFB2: '', encoding: 'utf-8', filename: '', bodyText: '',
                 uploader: oldUploader,
@@ -1725,8 +1737,11 @@
                 return;
             }
             el.innerHTML = books.map((b, i) => `
-        <div class="book-item" data-index="${i}" onclick="selectBook(${i})">
-            <div class="book-text">
+        <div class="book-item" data-index="${i}" style="opacity: ${b.selected !== false ? '1' : '0.5'};">
+            <div style="padding-right: 10px; display: flex; align-items: center;">
+                <input type="checkbox" ${b.selected !== false ? 'checked' : ''} onclick="event.stopPropagation(); toggleBookSelection(${i})" style="transform: scale(1.3); cursor: pointer;">
+            </div>
+            <div class="book-text" onclick="selectBook(${i})">
                 <div class="book-title">${esc(b.title)}</div>
                 <div class="book-author">${esc(b.author)}${b.seriesNum ? ' · №' + b.seriesNum : ''}</div>
             </div>
@@ -1736,6 +1751,14 @@
                 <button class="btn-sm del" onclick="event.stopPropagation(); removeBook(${i})">✕</button>
             </div>
         </div>`).join('');
+        }
+
+        function toggleBookSelection(index) {
+            if (index >= 0 && index < books.length) {
+                books[index].selected = books[index].selected === false ? true : false;
+                updateBookList();
+                regenerateBB();
+            }
         }
 
         function updateCoversGrid() {
@@ -1973,6 +1996,7 @@
         function regenerateBB() {
             const uniqueBooks = [];
             books.forEach(b => {
+                if (b.selected === false) return; // Ignore unselected books
                 const norm = s => (s || '').toLowerCase().replace(/[._\-—–\s]+/g, ' ').trim();
                 const d = u => norm(u.author) === norm(b.author) &&
                                norm(u.title) === norm(b.title) &&
@@ -2073,9 +2097,11 @@
 
         async function sendToForum() {
             const bb = document.getElementById('bbArea').value;
-            if (!bb) { status('❌ Сначала загрузите книги', 'err'); return; }
+            
+            let selectedBooks = books.filter(b => b.selected !== false);
+            if (!bb || selectedBooks.length === 0) { status('❌ Сначала загрузите и выберите книги', 'err'); return; }
 
-            books.sort((a,b) => {
+            selectedBooks.sort((a,b) => {
                 const nA = parseInt(a.seriesNum) || 0;
                 const nB = parseInt(b.seriesNum) || 0;
                 return nA - nB;
@@ -2098,13 +2124,13 @@
                 annotation: ''
             };
 
-            if (books.length > 0) {
-                const b0 = books[0];
+            if (selectedBooks.length > 0) {
+                const b0 = selectedBooks[0];
                 const author = (b0.author || 'Неизвестный автор').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
 
                 let seriesName = '';
                 const seriesCounts = {};
-                books.forEach(b => {
+                selectedBooks.forEach(b => {
                     if (b.series) {
                         seriesCounts[b.series] = (seriesCounts[b.series] || 0) + 1;
                     }
@@ -2118,8 +2144,8 @@
                 bookData.author = author;
                 bookData.authorInfo = author;
 
-                if (books.length === 1) {
-                    const b = books[0];
+                if (selectedBooks.length === 1) {
+                    const b = selectedBooks[0];
                     if (seriesName) {
                         const fullTitle = `${b.title}. ${seriesName}${b.seriesNum ? ' ' + b.seriesNum : ''}`;
                         bookData.title = fullTitle;
@@ -2132,11 +2158,11 @@
                     }
                 } else {
                     if (seriesName) {
-                        const nums = books.map(b => parseInt(b.seriesNum)).filter(n => !isNaN(n)).sort((a, b) => a - b);
+                        const nums = selectedBooks.map(b => parseInt(b.seriesNum)).filter(n => !isNaN(n)).sort((a, b) => a - b);
                         const range = nums.length > 1 ? ` ${nums[0]}-${nums[nums.length - 1]}` : (nums.length === 1 ? ` ${nums[0]}` : '');
                         bookData.title = `${seriesName}${range}`;
                         topicTitle = `${author} - ${seriesName}${range}`;
-                        bookData.series = books.map(b => b.title || 'Без названия').join('\n');
+                        bookData.series = selectedBooks.map(b => b.title || 'Без названия').join('\n');
                     } else {
                         bookData.title = b0.title || 'Без названия';
                         topicTitle = `${author} - ${bookData.title}`;
@@ -2144,11 +2170,11 @@
                     }
                 }
 
-                bookData.genre = [...new Set(books.map(x => x.genre).filter(Boolean))].join(', ');
+                bookData.genre = [...new Set(selectedBooks.map(x => x.genre).filter(Boolean))].join(', ');
                 bookData.year = b0.year || '';
 
-                if (books.length > 1) {
-                    bookData.annotation = books.map((b, idx) => {
+                if (selectedBooks.length > 1) {
+                    bookData.annotation = selectedBooks.map((b, idx) => {
                         const cleanAnnot = (b.annotation || 'Добавить аннотацию').replace(/[\r\n]+/g, ' ');
                         const num = b.seriesNum || (idx + 1);
                         return `[B]${num}. ${b.title || 'Без названия'}[/B]\n${cleanAnnot}`;
@@ -2165,7 +2191,7 @@
                 bookData.webLink = b0.webLink || '';
                 bookData.authors = b0.author || '';
                 bookData.coverFiles = [];
-                books.forEach((b, idx) => {
+                selectedBooks.forEach((b, idx) => {
                     if (b.cover && b.cover.data) {
                         bookData.coverFiles.push({
                             data: b.cover.data,
@@ -2189,32 +2215,51 @@
                 }
                 bookData.originalPostUrl = b0.originalPostUrl || currentBook?.originalPostUrl || '';
 
-                for (const b of books) {
+                const formatSelect = document.querySelector('input[name="publishFormat"]:checked')?.value || 'fb2';
+
+                for (const b of selectedBooks) {
                     try {
                         const baseName = makeFilename(b);
-                        let fileName, fileBase64, fileMime;
+                        
+                        // Если это PDF или уже EPUB в виде буфера, то конвертация не нужна
+                        const isNonFb2Original = b.originalBuffer && (!b.originalFB2);
 
-                        if (b.originalBuffer) {
-                            // PDF — упаковываем в zip
-                            const pdfArray = new Uint8Array(b.originalBuffer);
-                            const pdfZip = new JSZip();
-                            pdfZip.file(baseName + '.pdf', pdfArray);
-                            fileBase64 = await pdfZip.generateAsync({ type: 'base64', compression: 'DEFLATE' });
-                            fileName = baseName + '.pdf.zip';
-                            fileMime = 'application/zip';
-                        } else {
-                            // FB2/EPUB — упаковываем в zip
-                            const fb2Content = b.originalFB2 || generateFB2(b);
+                        if (isNonFb2Original) {
+                            let fileName, fileBase64, fileMime;
+                            // PDF / EPUB — упаковываем в zip
+                            const arr = new Uint8Array(b.originalBuffer);
                             const zip = new JSZip();
-                            zip.file(baseName + '.fb2', fb2Content);
+                            const ext = b.originalFilename ? (b.originalFilename.toLowerCase().endsWith('.epub') ? '.epub' : '.pdf') : '.pdf';
+                            zip.file(baseName + ext, arr);
                             fileBase64 = await zip.generateAsync({ type: 'base64', compression: 'DEFLATE' });
-                            fileName = baseName + '.fb2.zip';
+                            fileName = baseName + ext + '.zip';
                             fileMime = 'application/zip';
-                        }
 
-                        if (window.AndroidBridge && AndroidBridge.stageBookFile) {
-                            AndroidBridge.stageBookFile(fileName, fileBase64, fileMime);
-                            await new Promise(r => setTimeout(r, 500));
+                            if (window.AndroidBridge && AndroidBridge.stageBookFile) {
+                                AndroidBridge.stageBookFile(fileName, fileBase64, fileMime);
+                                await new Promise(r => setTimeout(r, 500));
+                            }
+                        } else {
+                            // FB2 — обрабатываем в зависимости от выбранного формата
+                            const fb2Content = b.originalFB2 || generateFB2(b);
+                            
+                            if (formatSelect === 'fb2' || formatSelect === 'both') {
+                                const zip = new JSZip();
+                                zip.file(baseName + '.fb2', fb2Content);
+                                const fileBase64 = await zip.generateAsync({ type: 'base64', compression: 'DEFLATE' });
+                                if (window.AndroidBridge && AndroidBridge.stageBookFile) {
+                                    AndroidBridge.stageBookFile(baseName + '.fb2.zip', fileBase64, 'application/zip');
+                                    await new Promise(r => setTimeout(r, 500));
+                                }
+                            }
+
+                            if (formatSelect === 'epub' || formatSelect === 'both') {
+                                const epubBase64 = await convertFb2ToEpubBase64(b, fb2Content, baseName);
+                                if (window.AndroidBridge && AndroidBridge.stageBookFile) {
+                                    AndroidBridge.stageBookFile(baseName + '.epub.zip', epubBase64, 'application/zip');
+                                    await new Promise(r => setTimeout(r, 500));
+                                }
+                            }
                         }
                     } catch (err) {
                         console.error('Ошибка упаковки отдельной книги:', err);

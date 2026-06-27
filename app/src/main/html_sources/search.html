@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Поиск книг</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --primary: #8b5cf6;
+  --primary-dark: #6d28d9;
+  --primary-glow: rgba(139, 92, 246, 0.4);
+  --accent: #f43f5e;
+  --green: #10b981;
+  --bg: #0f172a;
+  --bg-dots: radial-gradient(#1e293b 1px, transparent 1px);
+  --card: rgba(30, 41, 59, 0.7);
+  --card-border: rgba(255, 255, 255, 0.1);
+  --text: #f8fafc;
+  --sub: #94a3b8;
+  --radius: 20px;
+  --glass: blur(12px);
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  background-image: var(--bg-dots);
+  background-size: 24px 24px;
+  color: var(--text);
+  min-height: 100vh;
+  padding-bottom: 40px;
+  overflow-x: hidden;
+}
+
+/* ── Header ── */
+.header {
+  background: linear-gradient(165deg, #0ea5e9 0%, #6366f1 100%);
+  padding: 28px 20px;
+  border-radius: 0 0 32px 32px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35), 0 0 20px rgba(99,102,241,0.3);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+.header::before {
+  content: ''; position: absolute; top: -50%; right: -10%; width: 220px; height: 220px;
+  background: radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.header-content { display: flex; align-items: center; gap: 14px; position: relative; z-index: 2; }
+.back-btn {
+  background: rgba(255,255,255,0.15);
+  backdrop-filter: blur(4px);
+  width: 44px; height: 44px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid rgba(255,255,255,0.2); color: #fff; cursor: pointer;
+  font-size: 20px; flex-shrink: 0;
+  transition: background 0.2s;
+}
+.back-btn:active { background: rgba(255,255,255,0.28); transform: scale(0.93); }
+.header-titles { flex: 1; }
+.header h1 { font-size: 21px; font-weight: 800; letter-spacing: -0.5px; }
+.header p { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+
+/* ── Search bar ── */
+.search-wrap { padding: 0 16px; margin-bottom: 20px; }
+.search-box {
+  display: flex; gap: 10px;
+  background: var(--card);
+  backdrop-filter: var(--glass);
+  -webkit-backdrop-filter: var(--glass);
+  border: 1px solid var(--card-border);
+  border-radius: 18px;
+  padding: 10px 10px 10px 18px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  transition: border-color 0.2s;
+}
+.search-box:focus-within { border-color: rgba(99,102,241,0.6); box-shadow: 0 8px 32px rgba(0,0,0,0.2), 0 0 0 2px rgba(99,102,241,0.25); }
+.search-box input {
+  flex: 1; background: none; border: none; outline: none;
+  color: var(--text); font-size: 15px; font-family: inherit;
+}
+.search-box input::placeholder { color: var(--sub); }
+.btn-search {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none; color: #fff; padding: 10px 20px; border-radius: 12px;
+  font-size: 14px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  font-family: inherit; transition: opacity 0.2s, transform 0.1s;
+  box-shadow: 0 4px 14px rgba(99,102,241,0.4);
+}
+.btn-search:active { opacity: 0.85; transform: scale(0.96); }
+
+/* ── Status bar ── */
+.status-bar {
+  margin: 0 16px 16px;
+  padding: 10px 16px;
+  border-radius: 14px;
+  font-size: 13px; font-weight: 500;
+  display: none;
+}
+.status-bar.show { display: block; }
+.status-bar.loading { background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.3); color: #a5b4fc; }
+.status-bar.error { background: rgba(244,63,94,0.12); border: 1px solid rgba(244,63,94,0.3); color: #fda4af; }
+.status-bar.success { background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.3); color: #6ee7b7; }
+
+/* ── Results table ── */
+.results-section { padding: 0 16px; display: none; }
+.results-section.show { display: block; }
+.results-header {
+  font-size: 11px; font-weight: 700; color: #a5b4fc;
+  text-transform: uppercase; letter-spacing: 1.2px;
+  margin-bottom: 10px;
+  display: flex; align-items: center; gap: 8px;
+}
+.results-header .badge {
+  background: rgba(99,102,241,0.2); color: #a5b4fc;
+  padding: 2px 8px; border-radius: 20px; font-size: 11px;
+}
+
+.result-card {
+  background: var(--card);
+  backdrop-filter: var(--glass);
+  -webkit-backdrop-filter: var(--glass);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  transition: border-color 0.2s, transform 0.15s;
+  animation: slideIn 0.25s ease both;
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.result-card:active { transform: scale(0.98); }
+
+.result-main {
+  padding: 14px 16px 10px;
+}
+.result-title {
+  font-size: 14px; font-weight: 700; color: var(--text);
+  line-height: 1.4; margin-bottom: 4px;
+}
+.result-meta {
+  font-size: 12px; color: var(--sub); line-height: 1.4;
+}
+.result-source {
+  display: inline-block;
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
+  padding: 2px 7px; border-radius: 6px; margin-right: 6px;
+  background: rgba(14,165,233,0.15); color: #7dd3fc;
+}
+.result-source.src-flibusta { background: rgba(99,102,241,0.15); color: #a5b4fc; }
+.result-source.src-annas    { background: rgba(244,63,94,0.12);  color: #fda4af; }
+.result-source.src-zlib     { background: rgba(16,185,129,0.12); color: #6ee7b7; }
+.result-source.src-readtoday{ background: rgba(251,146,60,0.15); color: #fdba74; }
+.result-source.src-gigabooks{ background: rgba(139,92,246,0.15); color: #c4b5fd; }
+
+.result-formats {
+  padding: 8px 16px 12px;
+  display: flex; flex-wrap: wrap; gap: 6px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.fmt-btn {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text); padding: 5px 12px; border-radius: 9px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  font-family: inherit; transition: background 0.15s, transform 0.1s;
+  display: flex; align-items: center; gap: 5px;
+}
+.fmt-btn:hover { background: rgba(255,255,255,0.1); }
+.fmt-btn:active { transform: scale(0.94); background: rgba(99,102,241,0.25); }
+.fmt-btn .fmt-icon { font-size: 13px; }
+.fmt-btn .fmt-size { font-size: 10px; color: var(--sub); margin-left: 2px; }
+
+.btn-open-site {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--sub); padding: 5px 12px; border-radius: 9px;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  font-family: inherit; transition: background 0.15s;
+  display: flex; align-items: center; gap: 4px;
+}
+.btn-open-site:active { background: rgba(255,255,255,0.12); transform: scale(0.95); }
+
+.no-results {
+  text-align: center; padding: 40px 20px;
+  color: var(--sub); font-size: 14px;
+}
+.no-results .icon { font-size: 40px; margin-bottom: 12px; }
+
+/* ── Site selector chips ── */
+.sites-wrap { padding: 0 16px; margin-bottom: 16px; }
+.sites-label {
+  font-size: 11px; font-weight: 700; color: #a5b4fc;
+  text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 10px;
+}
+.sites-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.site-card {
+  background: var(--card);
+  backdrop-filter: var(--glass);
+  -webkit-backdrop-filter: var(--glass);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 14px 14px 12px;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.site-card.selected {
+  border-color: rgba(99,102,241,0.6);
+  box-shadow: 0 0 0 1px rgba(99,102,241,0.3), 0 4px 20px rgba(99,102,241,0.15);
+}
+.site-card:active { transform: scale(0.97); }
+.site-check {
+  position: absolute; top: 10px; right: 10px;
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; transition: all 0.2s;
+  background: transparent;
+}
+.site-card.selected .site-check {
+  background: #6366f1; border-color: #6366f1; color: #fff;
+}
+.site-emoji { font-size: 22px; margin-bottom: 6px; display: block; }
+.site-name { font-size: 13px; font-weight: 700; }
+.site-desc { font-size: 11px; color: var(--sub); margin-top: 2px; line-height: 1.4; }
+
+/* ── Search all button ── */
+.btn-search-all {
+  display: block; width: calc(100% - 32px); margin: 0 16px 20px;
+  background: linear-gradient(135deg, #0ea5e9, #6366f1);
+  border: none; color: #fff; padding: 15px 20px; border-radius: 16px;
+  font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit;
+  box-shadow: 0 6px 20px rgba(99,102,241,0.35);
+  transition: opacity 0.2s, transform 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-search-all:active { opacity: 0.88; transform: scale(0.98); }
+.btn-search-all.loading { opacity: 0.65; pointer-events: none; }
+
+/* ── Spinner ── */
+.spinner {
+  display: inline-block; width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Progress per-site ── */
+.site-progress {
+  padding: 0 16px; margin-bottom: 14px; display: none;
+}
+.site-progress.show { display: block; }
+.progress-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 13px;
+}
+.progress-item:last-child { border-bottom: none; }
+.progress-status {
+  margin-left: auto; font-size: 12px;
+  min-width: 60px; text-align: right;
+}
+.progress-status.done { color: var(--green); }
+.progress-status.loading { color: #a5b4fc; }
+.progress-status.error { color: var(--accent); }
+.progress-status.empty { color: var(--sub); }
+
+/* ── Domain settings ── */
+.settings-toggle {
+  margin: 0 16px 12px;
+  background: none; border: none;
+  color: var(--sub); font-size: 12px; cursor: pointer;
+  font-family: inherit; display: flex; align-items: center; gap: 6px;
+  padding: 0;
+}
+.settings-toggle:active { color: var(--text); }
+.settings-panel {
+  margin: 0 16px 20px;
+  background: var(--card);
+  backdrop-filter: var(--glass);
+  -webkit-backdrop-filter: var(--glass);
+  border: 1px solid var(--card-border);
+  border-radius: 16px; padding: 16px;
+  display: none;
+}
+.settings-panel.show { display: block; }
+.setting-row {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 12px;
+}
+.setting-row:last-child { margin-bottom: 0; }
+.setting-label { font-size: 12px; color: var(--sub); min-width: 90px; }
+.setting-input {
+  flex: 1; background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+  padding: 7px 10px; color: var(--text); font-size: 12px;
+  font-family: inherit; outline: none;
+  transition: border-color 0.2s;
+}
+.setting-input:focus { border-color: rgba(99,102,241,0.5); }
+.btn-save-settings {
+  width: 100%; margin-top: 14px;
+  background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.3);
+  color: #a5b4fc; padding: 10px; border-radius: 12px;
+  font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+  transition: background 0.2s;
+}
+.btn-save-settings:active { background: rgba(99,102,241,0.35); }
+
+/* ── Download toast ── */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+  background: #1e293b; border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text); padding: 12px 20px; border-radius: 14px;
+  font-size: 13px; font-weight: 500;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  z-index: 9999; white-space: nowrap;
+  display: flex; align-items: center; gap: 8px;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<div class="header">
+  <div class="header-content">
+    <button class="back-btn" id="btnBack" onclick="goBack()">←</button>
+    <div class="header-titles">
+      <h1>📚 Найти книгу</h1>
+      <p>Поиск по библиотекам и скачивание</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Search bar ── -->
+<div class="search-wrap">
+  <div class="search-box">
+    <input type="text" id="queryInput" placeholder="Автор или название книги…"
+           onkeydown="if(event.key==='Enter') startSearch()">
+    <button class="btn-search" onclick="startSearch()">Найти</button>
+  </div>
+</div>
+
+<!-- ── Sites selector ── -->
+<div class="sites-wrap">
+  <div class="sites-label">Искать на сайтах</div>
+  <div class="sites-grid" id="sitesGrid">
+    <div class="site-card selected" id="scard-flibusta" onclick="toggleSite('flibusta')">
+      <div class="site-check" id="check-flibusta">✓</div>
+      <span class="site-emoji">📖</span>
+      <div class="site-name">Флибуста</div>
+      <div class="site-desc">Крупнейшая рус. библиотека<br>FB2, EPUB</div>
+    </div>
+    <div class="site-card selected" id="scard-annas" onclick="toggleSite('annas')">
+      <div class="site-check" id="check-annas">✓</div>
+      <span class="site-emoji">🌍</span>
+      <div class="site-name">Anna's Archive</div>
+      <div class="site-desc">Мета-поисковик по всем<br>PDF, EPUB, FB2</div>
+    </div>
+    <div class="site-card selected" id="scard-gigabooks" onclick="toggleSite('gigabooks')">
+      <div class="site-check" id="check-gigabooks">✓</div>
+      <span class="site-emoji">📚</span>
+      <div class="site-name">GigaBooks</div>
+      <div class="site-desc">Рус. онлайн-библиотека<br>FB2, EPUB, TXT</div>
+    </div>
+    <div class="site-card selected" id="scard-readtoday" onclick="toggleSite('readtoday')">
+      <div class="site-check" id="check-readtoday">✓</div>
+      <span class="site-emoji">📰</span>
+      <div class="site-name">ReadToday</div>
+      <div class="site-desc">Читать онлайн, скачать<br>FB2, EPUB, TXT</div>
+    </div>
+    <div class="site-card selected" id="scard-zlib" onclick="toggleSite('zlib')" style="grid-column: span 2;">
+      <div class="site-check" id="check-zlib">✓</div>
+      <span class="site-emoji">📦</span>
+      <div class="site-name">Z-Library</div>
+      <div class="site-desc">Огромная библиотека. PDF, EPUB, FB2</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Search all button ── -->
+<div style="display:flex; margin: 0 16px 20px; gap: 10px;">
+  <button class="btn-search-all" id="btnSearchAll" onclick="startSearch()" style="margin:0; flex:1;">
+    <span id="btnSearchAllIcon">🔍</span>
+    <span id="btnSearchAllText">Искать на выбранных сайтах</span>
+  </button>
+  <button class="btn-search-all" id="btnStopSearch" onclick="stopSearch()" style="margin:0; flex:none; width:50px; background:linear-gradient(135deg, #f43f5e, #e11d48); display:none; padding:0;">
+    <span style="font-size:20px;">⏹</span>
+  </button>
+</div>
+
+<!-- ── Status ── -->
+<div class="status-bar" id="statusBar"></div>
+
+<!-- ── Per-site progress ── -->
+<div class="site-progress" id="siteProgress"></div>
+
+<!-- ── Results ── -->
+<div class="results-section" id="resultsSection">
+  <div class="results-header">
+    <span>Результаты поиска</span>
+    <span class="badge" id="resultsBadge">0</span>
+  </div>
+  <div id="resultsContainer"></div>
+</div>
+
+<!-- ── Settings toggle ── -->
+<button class="settings-toggle" onclick="toggleSettings()">
+  ⚙ Настройки доменов
+</button>
+<div class="settings-panel" id="settingsPanel">
+  <div class="setting-row">
+    <span class="setting-label">Флибуста</span>
+    <input class="setting-input" id="domFlibusta" placeholder="http://flibusta.is">
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">Anna's Archive</span>
+    <input class="setting-input" id="domAnnas" placeholder="https://annas-archive.gd">
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">GigaBooks</span>
+    <input class="setting-input" id="domGigabooks" placeholder="https://gigabooks.ru">
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">ReadToday</span>
+    <input class="setting-input" id="domReadtoday" placeholder="https://readtoday.ru">
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">Z-Library</span>
+    <input class="setting-input" id="domZlib" placeholder="https://ru.z-lib.fm">
+  </div>
+  <button class="btn-save-settings" onclick="saveSettings()">💾 Сохранить</button>
+</div>
+
+<!-- ── Download toast ── -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════
+const SITES = {
+  flibusta:  { name: 'Флибуста',      cls: 'src-flibusta',  emoji: '📖' },
+  annas:     { name: "Anna's Archive", cls: 'src-annas',     emoji: '🌍' },
+  gigabooks: { name: 'GigaBooks',     cls: 'src-gigabooks',  emoji: '📚' },
+  readtoday: { name: 'ReadToday',     cls: 'src-readtoday',  emoji: '📰' },
+  zlib:      { name: 'Z-Library',     cls: 'src-zlib',       emoji: '📦' },
+};
+
+const DEFAULT_DOMAINS = {
+  flibusta:  'http://flibusta.is',
+  annas:     'https://annas-archive.gd',
+  gigabooks: 'https://gigabooks.ru',
+  readtoday: 'https://readtoday.ru',
+  zlib:      'https://ru.z-lib.fm',
+};
+
+let domains   = { ...DEFAULT_DOMAINS };
+let selected  = new Set(['flibusta','annas','gigabooks','readtoday','zlib']);
+let allResults = [];    // { title, author, source, formats: [{label, url, size}], pageUrl }
+let pendingSites = 0;   // sites still loading
+let searchQuery = '';
+
+// ════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════
+window.onload = function() {
+  loadSettings();
+  loadDomainInputs();
+
+  // Prefill query if passed from parser
+  if (window.SearchBridge && SearchBridge.getInitialQuery) {
+    const q = SearchBridge.getInitialQuery();
+    if (q) document.getElementById('queryInput').value = q;
+  }
+};
+
+// ════════════════════════════════════════
+//  NAVIGATION
+// ════════════════════════════════════════
+function goBack() {
+  if (window.SearchBridge && SearchBridge.returnToParser) {
+    SearchBridge.returnToParser();
+  }
+}
+
+// ════════════════════════════════════════
+//  SITE SELECTION
+// ════════════════════════════════════════
+function toggleSite(id) {
+  const card  = document.getElementById('scard-' + id);
+  const check = document.getElementById('check-' + id);
+  if (selected.has(id)) {
+    selected.delete(id);
+    card.classList.remove('selected');
+    check.textContent = '';
+  } else {
+    selected.add(id);
+    card.classList.add('selected');
+    check.textContent = '✓';
+  }
+}
+
+// ════════════════════════════════════════
+//  SEARCH  
+// ════════════════════════════════════════
+function startSearch() {
+  const q = document.getElementById('queryInput').value.trim();
+  if (!q) { showStatus('Введите название или автора книги', 'error'); return; }
+  if (selected.size === 0) { showStatus('Выберите хотя бы один сайт', 'error'); return; }
+
+  searchQuery = q;
+  allResults = [];
+  pendingSites = selected.size;
+
+  // Reset UI
+  document.getElementById('resultsSection').classList.remove('show');
+  document.getElementById('resultsContainer').innerHTML = '';
+  document.getElementById('resultsBadge').textContent = '0';
+  showStatus('⏳ Поиск…', 'loading');
+  setSearchBtnLoading(true);
+
+  // Show per-site progress
+  const prog = document.getElementById('siteProgress');
+  prog.innerHTML = '';
+  selected.forEach(siteId => {
+    const row = document.createElement('div');
+    row.className = 'progress-item';
+    row.id = 'prog-' + siteId;
+    row.innerHTML = `
+      <span>${SITES[siteId].emoji}</span>
+      <span style="font-size:13px">${SITES[siteId].name}</span>
+      <span class="progress-status loading" id="pstat-${siteId}"><div class="spinner" style="width:12px;height:12px;border-width:1.5px;display:inline-block"></div></span>`;
+    prog.appendChild(row);
+  });
+  prog.classList.add('show');
+  document.getElementById('btnStopSearch').style.display = 'block';
+
+  // Trigger search on each selected site via Android bridge
+  selected.forEach(siteId => {
+    if (window.SearchBridge && SearchBridge.searchOnSite) {
+      SearchBridge.searchOnSite(siteId, q, getDomain(siteId));
+    } else {
+      // Fallback for desktop testing
+      setTimeout(() => onSiteResults(siteId, '[]'), 800 + Math.random()*500);
+    }
+  });
+}
+
+function stopSearch() {
+  if (window.SearchBridge && SearchBridge.stopSearch) {
+    SearchBridge.stopSearch();
+  }
+  setSearchBtnLoading(false);
+  document.getElementById('btnStopSearch').style.display = 'none';
+  selected.forEach(siteId => {
+    const pstat = document.getElementById('pstat-' + siteId);
+    if (pstat && pstat.className.includes('loading')) {
+      pstat.textContent = 'Остановлено'; pstat.className = 'progress-status error';
+      pendingSites--;
+    }
+  });
+  renderResults();
+}
+
+function getDomain(siteId) {
+  return domains[siteId] || DEFAULT_DOMAINS[siteId];
+}
+
+function setSearchBtnLoading(on) {
+  const btn = document.getElementById('btnSearchAll');
+  const icon = document.getElementById('btnSearchAllIcon');
+  const text = document.getElementById('btnSearchAllText');
+  if (on) {
+    btn.classList.add('loading');
+    icon.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle"></div>';
+    text.textContent = 'Ищем…';
+  } else {
+    btn.classList.remove('loading');
+    icon.textContent = '🔍';
+    text.textContent = 'Искать на выбранных сайтах';
+  }
+}
+
+// ════════════════════════════════════════
+//  CALLBACKS FROM ANDROID
+// ════════════════════════════════════════
+
+// Called by Kotlin when results for one site are ready
+window.onSiteResults = function(siteId, jsonStr) {
+  try {
+    const results = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+    const pstat = document.getElementById('pstat-' + siteId);
+
+    if (!results || results.length === 0) {
+      if (pstat) { pstat.textContent = 'Не найдено'; pstat.className = 'progress-status empty'; }
+    } else {
+      if (pstat) { pstat.textContent = '✓ ' + results.length; pstat.className = 'progress-status done'; }
+      results.forEach(r => { r.source = siteId; allResults.push(r); });
+    }
+  } catch(e) {
+    const pstat = document.getElementById('pstat-' + siteId);
+    if (pstat) { pstat.textContent = 'Ошибка'; pstat.className = 'progress-status error'; }
+  }
+
+  pendingSites--;
+  if (pendingSites <= 0) {
+    setSearchBtnLoading(false);
+    document.getElementById('btnStopSearch').style.display = 'none';
+    renderResults();
+  }
+};
+
+window.onSiteError = function(siteId, msg) {
+  const pstat = document.getElementById('pstat-' + siteId);
+  if (pstat) { pstat.textContent = 'Недоступен'; pstat.className = 'progress-status error'; }
+  pendingSites--;
+  if (pendingSites <= 0) {
+    setSearchBtnLoading(false);
+    document.getElementById('btnStopSearch').style.display = 'none';
+    renderResults();
+  }
+};
+
+// Called by Kotlin when a download starts/completes
+window.onDownloadStarted = function(fileName) {
+  showToast('⬇️ Скачивание: ' + fileName);
+};
+window.onDownloadDone = function(fileName) {
+  showToast('✅ Сохранено: ' + fileName);
+};
+window.onDownloadError = function(msg) {
+  showToast('❌ Ошибка: ' + msg);
+};
+
+// ════════════════════════════════════════
+//  RENDER RESULTS
+// ════════════════════════════════════════
+function renderResults() {
+  const container = document.getElementById('resultsContainer');
+  const section   = document.getElementById('resultsSection');
+  const badge     = document.getElementById('resultsBadge');
+  container.innerHTML = '';
+
+  if (allResults.length === 0) {
+    showStatus('🔍 Книга не найдена ни на одном из выбранных сайтов', 'error');
+    section.classList.remove('show');
+    return;
+  }
+
+  showStatus('✅ Найдено результатов: ' + allResults.length, 'success');
+  badge.textContent = allResults.length;
+  section.classList.add('show');
+
+  allResults.forEach((r, idx) => {
+    const siteInfo = SITES[r.source] || { name: r.source, cls: '', emoji: '📄' };
+    const card = document.createElement('div');
+    card.className = 'result-card';
+    card.style.animationDelay = (idx * 0.04) + 's';
+
+    // Format buttons
+    let fmtHtml = '';
+    if (r.formats && r.formats.length > 0) {
+      r.formats.forEach(fmt => {
+        const size = fmt.size ? `<span class="fmt-size">${fmt.size}</span>` : '';
+        const titleSafe = r.title ? r.title.replace(/'/g, "\\'").replace(/"/g, '') : 'book';
+        const authorSafe = r.author ? r.author.replace(/'/g, "\\'").replace(/"/g, '') : '';
+        const fileBase = authorSafe ? `${authorSafe} - ${titleSafe}` : titleSafe;
+        fmtHtml += `<button class="fmt-btn" onclick="downloadBook('${esc(fmt.url)}', '${esc(fmt.label)}', '${esc(fileBase)}')">
+          <span class="fmt-icon">${fmtIcon(fmt.label)}</span>${fmt.label}${size}
+        </button>`;
+      });
+    }
+    if (r.pageUrl) {
+      fmtHtml += `<button class="btn-open-site" onclick="openPage('${esc(r.pageUrl)}')">🌐 Открыть</button>`;
+    }
+
+    card.innerHTML = `
+      <div class="result-main">
+        <div class="result-title">${escHtml(r.title)}</div>
+        <div class="result-meta">
+          <span class="result-source ${siteInfo.cls}">${siteInfo.emoji} ${siteInfo.name}</span>
+          ${r.author ? escHtml(r.author) : ''}
+        </div>
+      </div>
+      ${fmtHtml ? `<div class="result-formats">${fmtHtml}</div>` : ''}`;
+
+    container.appendChild(card);
+  });
+
+  // Scroll to results
+  setTimeout(() => section.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+}
+
+function fmtIcon(label) {
+  const l = (label || '').toLowerCase();
+  if (l.includes('fb2'))  return '📘';
+  if (l.includes('epub')) return '📗';
+  if (l.includes('pdf'))  return '📕';
+  if (l.includes('mobi') || l.includes('azw')) return '📙';
+  if (l.includes('txt'))  return '📄';
+  return '📁';
+}
+
+function downloadBook(url, label, fileBase) {
+  showToast('⏳ Запрос на скачивание…');
+  const ext = (label || '').toLowerCase();
+  let filename = fileBase;
+  if (!filename.toLowerCase().endsWith('.' + ext)) {
+      filename += '.' + ext;
+  }
+  
+  if (window.SearchBridge && SearchBridge.downloadFile) {
+    SearchBridge.downloadFile(url, label, filename);
+  } else {
+    // Fallback
+    window.open(url, '_blank');
+  }
+}
+
+function openPage(url) {
+  if (window.SearchBridge && SearchBridge.openInBrowser) {
+    SearchBridge.openInBrowser(url);
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
+// ════════════════════════════════════════
+//  SETTINGS
+// ════════════════════════════════════════
+function toggleSettings() {
+  const panel = document.getElementById('settingsPanel');
+  panel.classList.toggle('show');
+}
+
+function loadSettings() {
+  if (window.SearchBridge && SearchBridge.getDomains) {
+    try {
+      const saved = JSON.parse(SearchBridge.getDomains());
+      Object.assign(domains, saved);
+    } catch(e) {}
+  }
+}
+
+function loadDomainInputs() {
+  Object.keys(DEFAULT_DOMAINS).forEach(id => {
+    const inp = document.getElementById('dom' + cap(id));
+    if (inp) inp.value = domains[id] || DEFAULT_DOMAINS[id];
+  });
+}
+
+function saveSettings() {
+  Object.keys(DEFAULT_DOMAINS).forEach(id => {
+    const inp = document.getElementById('dom' + cap(id));
+    if (inp && inp.value.trim()) domains[id] = inp.value.trim();
+  });
+  if (window.SearchBridge && SearchBridge.setDomains) {
+    SearchBridge.setDomains(JSON.stringify(domains));
+  }
+  document.getElementById('settingsPanel').classList.remove('show');
+  showToast('✅ Настройки сохранены');
+}
+
+// ════════════════════════════════════════
+//  UI HELPERS
+// ════════════════════════════════════════
+function showStatus(msg, type) {
+  const bar = document.getElementById('statusBar');
+  bar.textContent = msg;
+  bar.className = 'status-bar show ' + type;
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+function escHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function esc(s) {
+  return (s || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+}
+function cap(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+</script>
+</body>
+</html>

@@ -843,7 +843,8 @@ async function trGooglePA(text) {
 
 async function _googlePARequest(text, src, dst, apiKey) {
   if (!text || !text.trim()) return text;
-  const url = `https://translate-pa.googleapis.com/v1/translate?params.client=gtx&query.source_language=${src === "auto" ? "auto" : src}&query.target_language=${dst}&query.display_language=en-US&data_types=TRANSLATION&key=${apiKey}&query.text=${encodeURIComponent(text)}`;
+  const effectiveSrc = (!src || src === 'auto') ? 'ru' : src;
+  const url = `https://translate-pa.googleapis.com/v1/translate?params.client=gtx&query.source_language=${effectiveSrc}&query.target_language=${dst}&query.display_language=en-US&data_types=TRANSLATION&key=${apiKey}&query.text=${encodeURIComponent(text)}`;
   const headers = {
     'Accept': '*/*',
     'Accept-Language': 'en-US,en;q=0.9',
@@ -854,8 +855,9 @@ async function _googlePARequest(text, src, dst, apiKey) {
       if (err) return reject(new Error(err));
       try {
         const data = JSON.parse(res);
-        if (data.translation) resolve(data.translation.trim());
-        else throw new Error('Empty Google PA response');
+        const translated = data.translation || data.translations?.[0]?.translatedText || '';
+        if (translated) resolve(translated.trim());
+        else throw new Error('Empty Google PA response: ' + JSON.stringify(data).substring(0, 200));
       } catch(e) {
         reject(new Error('Google PA Error: ' + e.message));
       }
