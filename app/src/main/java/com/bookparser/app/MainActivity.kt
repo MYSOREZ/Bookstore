@@ -1906,14 +1906,18 @@ class MainActivity : AppCompatActivity() {
                 (function() {
                     function doParse() {
                         var results = [];
-                        var items = document.querySelectorAll('#main ul li a[href^="/b/"]');
-                        if (items.length === 0) return null;
+                        var items = document.querySelectorAll('#main ul li a[href^="/b/"], #main li a[href*="/b/"], ul li a[href^="/b/"]');
+                        if (items.length === 0) {
+                            var noResults = document.body.textContent.toLowerCase();
+                            if (noResults.includes('ничего не найдено') || noResults.includes('not found') || noResults.includes('no results')) return '[]';
+                            return null;
+                        }
                         items.forEach(function(a) {
                             var li = a.closest('li');
                             if (!li) return;
                             var title = a.textContent.trim();
                             var href = a.href;
-                            var authorA = li.querySelector('a[href^="/a/"]');
+                            var authorA = li.querySelector('a[href^="/a/"], a[href*="/a/"]');
                             var author = authorA ? authorA.textContent.trim() : '';
                             var bookId = href.match(/\\/b\\/(\\d+)/)?.[1];
                             if (!bookId) return;
@@ -1928,31 +1932,51 @@ class MainActivity : AppCompatActivity() {
                                 ]
                             });
                         });
-                        return JSON.stringify(results.slice(0, 30));
+                        return results.length > 0 ? JSON.stringify(results.slice(0, 30)) : '[]';
                     }
                     var attempts = 0;
                     var timer = setInterval(function() {
                         var res = doParse();
-                        if (res) {
+                        if (res === '[]') {
+                            clearInterval(timer);
+                            window.SearchBridge.deliverSearchResults('flibusta', '[]');
+                        } else if (res) {
                             clearInterval(timer);
                             window.SearchBridge.deliverSearchResults('flibusta', res);
-                        } else if (++attempts > 14) { // 7 seconds
+                        } else if (++attempts > 20) {
                             clearInterval(timer);
                             window.SearchBridge.deliverSearchResults('flibusta', '[]');
                         }
-                    }, 500);
+                    }, 600);
                 })()
             """
             "annas" -> """
                 (function() {
                     function doParse() {
+                        var loadingIndicator = document.querySelector('.loading, [class*=spinner], [class*=load]');
+                        if (loadingIndicator && loadingIndicator.offsetParent !== null) return null;
+                        
                         var results = [];
                         var cards = document.querySelectorAll('a[href*="/md5/"]');
-                        if (cards.length === 0) return null;
+                        if (cards.length === 0) {
+                            cards = document.querySelectorAll('main a[href*="/"], .results a, [class*=result] a');
+                        }
+                        if (cards.length === 0) {
+                            var noResults = document.body.textContent.toLowerCase();
+                            if (noResults.includes('no results') || noResults.includes('not found') || noResults.includes('ничего не найдено')) return '[]';
+                            return null;
+                        }
                         var seen = new Set();
                         cards.forEach(function(a) {
                             var href = a.href;
-                            if (seen.has(href)) return;
+                            if (!href || seen.has(href)) return;
+                            if (!href.includes('/md5/')) {
+                                var parent = a.closest('[class*=result], [class*=item], article');
+                                if (!parent) return;
+                                var mdLink = parent.querySelector('a[href*="/md5/"]');
+                                if (mdLink) href = mdLink.href;
+                                else return;
+                            }
                             var titleEl = a.querySelector('h3, .text-lg, .font-bold, [class*="title"]');
                             var title = titleEl ? titleEl.textContent.trim() : a.textContent.trim().split('\\n')[0];
                             if (!title || title.length < 2) return;
@@ -1968,19 +1992,22 @@ class MainActivity : AppCompatActivity() {
                                 formats: fmt ? [{label: fmt, url: href}] : [{label: 'Открыть', url: href}]
                             });
                         });
-                        return JSON.stringify(results.slice(0, 30));
+                        return results.length > 0 ? JSON.stringify(results.slice(0, 30)) : '[]';
                     }
                     var attempts = 0;
                     var timer = setInterval(function() {
                         var res = doParse();
-                        if (res) {
+                        if (res === '[]') {
+                            clearInterval(timer);
+                            window.SearchBridge.deliverSearchResults('annas', '[]');
+                        } else if (res) {
                             clearInterval(timer);
                             window.SearchBridge.deliverSearchResults('annas', res);
-                        } else if (++attempts > 14) {
+                        } else if (++attempts > 20) {
                             clearInterval(timer);
                             window.SearchBridge.deliverSearchResults('annas', '[]');
                         }
-                    }, 500);
+                    }, 600);
                 })()
             """
             "gigabooks", "readtoday" -> """
@@ -2024,11 +2051,11 @@ class MainActivity : AppCompatActivity() {
                         if (res) {
                             clearInterval(timer);
                             window.SearchBridge.deliverSearchResults('${siteId}', res);
-                        } else if (++attempts > 14) {
+                        } else if (++attempts > 20) {
                             clearInterval(timer);
-                            window.SearchBridge.deliverSearchResults('${siteId}', '[]');
+                            window.SearchBridge.deliverSearchResults('${'$'}{siteId}', '[]');
                         }
-                    }, 500);
+                    }, 600);
                 })()
             """
             "zlib" -> """
@@ -2069,11 +2096,11 @@ class MainActivity : AppCompatActivity() {
                         if (res) {
                             clearInterval(timer);
                             window.SearchBridge.deliverSearchResults('zlib', res);
-                        } else if (++attempts > 14) {
+                        } else if (++attempts > 20) {
                             clearInterval(timer);
                             window.SearchBridge.deliverSearchResults('zlib', '[]');
                         }
-                    }, 500);
+                    }, 600);
                 })()
             """
             else -> "'[]'"
