@@ -52,11 +52,35 @@ jobs:
         VERSION_NAME=$(grep 'versionName' app/build.gradle | head -1 | awk '{print $2}' | tr -d '"' | tr -d "'")
         echo "version=$VERSION_NAME" >> $GITHUB_OUTPUT
 
+    - name: Generate Release Notes
+      run: |
+        python3 -c "
+        import sys
+        content = '''### 📖 Книжная лавка (Bookstore) — Комбайн для Книгохранилища 4PDA
+
+**Основные возможности:**
+- 📚 Универсальный парсер книг (FB2, FB2.ZIP, EPUB, PDF)
+- 🌐 Интеллектуальный переводчик (Gemini AI, Google PA, Edge Free, Custom AI)
+- 🤖 Автоматизация публикации на форум 4PDA
+- 🔍 Поиск по библиотекам (Флибуста, Anna's Archive, GigaBooks, ReadToday, Z-Library)
+- 🛡️ ProGuard: Защита и минификация кода
+- 🎨 UI: Современная тёмная тема Glassmorphism
+
+**Требования:**
+- Android 8.0+ (API 26)
+- Размер: ~4.3 MB
+'''
+        with open('release_notes.md', 'w', encoding='utf-8') as f:
+            f.write(content)
+        print('Release notes written with UTF-8 encoding')
+        "
+
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
         tag_name: v${{ steps.get_version.outputs.version }}
-        name: Release ${{ steps.get_version.outputs.version }}
+        name: Bookstore v${{ steps.get_version.outputs.version }}
+        body_path: release_notes.md
         draft: false
         prerelease: false
         files: app/build/outputs/apk/release/Bookstore-*.apk
