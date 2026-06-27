@@ -33,6 +33,13 @@
         android:layout_height="match_parent"
         android:visibility="gone" />
 
+    <!-- WebView для поиска и скачивания книг -->
+    <WebView
+        android:id="@+id/webViewSearch"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
     <!-- Кнопка открытия логов (поверх всего, правый нижний угол) -->
     <ImageButton
         android:id="@+id/btnShowLog"

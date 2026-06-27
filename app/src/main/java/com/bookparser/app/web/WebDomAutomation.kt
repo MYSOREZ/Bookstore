@@ -85,7 +85,7 @@ class WebDomAutomation(private val webView: WebView) {
 
                     setByName('forum-template-field[0]', '${metadata.authors.joinToString(", ").escapeJs()}');
                     setByName('forum-template-field[1]', '${metadata.title.escapeJs()}');
-                    setByName('forum-template-field[2]', '${metadata.seriesBooks?.escapeJs() ?: ""}');
+                    // setByName('forum-template-field[2]', '${metadata.seriesBooks?.escapeJs() ?: ""}');
 
                     var selectedGenres = ${JSONArray(genreValues)};
                     var genreCbs = document.querySelectorAll('input[name="forum-template-field[3][]"]');

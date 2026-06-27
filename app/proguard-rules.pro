@@ -3,8 +3,8 @@
 -allowaccessmodification
 -printmapping mapping.txt
 
-# Сохраняем только самое необходимое
--keepclassmembers class * {
+# Сохраняем все методы с @JavascriptInterface (включая классы-владельцы)
+-keepclasseswithmembers class * {
     @android.webkit.JavascriptInterface <methods>;
 }
 
