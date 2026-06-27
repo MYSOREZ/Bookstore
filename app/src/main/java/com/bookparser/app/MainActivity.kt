@@ -27,6 +27,7 @@ import com.bookparser.app.processing.BookMetadata
 import com.bookparser.app.parser.GenreMapping
 import com.bookparser.app.web.WebDomAutomation
 import com.bookparser.app.web.EncryptedWebViewClient
+import com.bookparser.app.web.DohWebViewClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -1878,23 +1879,18 @@ class MainActivity : AppCompatActivity() {
                     setAcceptCookie(true)
                     setAcceptThirdPartyCookies(scraper, true)
                 }
-                scraper.webViewClient = object : android.webkit.WebViewClient() {
-                    override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                scraper.webViewClient = DohWebViewClient(
+                    siteId = siteId,
+                    onExtract = { view ->
                         val jsExtract = buildExtractJs(siteId)
                         view?.evaluateJavascript(jsExtract, null)
+                    },
+                    onError = {
+                        activeScrapers.remove(scraper)
+                        scraper.destroy()
+                        searchCallback("window.onSiteError && window.onSiteError('$siteId', 'Сайт недоступен');")
                     }
-                    override fun onReceivedError(
-                        view: android.webkit.WebView?,
-                        request: android.webkit.WebResourceRequest?,
-                        error: android.webkit.WebResourceError?
-                    ) {
-                        if (request?.isForMainFrame == true) {
-                            activeScrapers.remove(scraper)
-                            scraper.destroy()
-                            searchCallback("window.onSiteError && window.onSiteError('$siteId', 'Сайт недоступен');")
-                        }
-                    }
-                }
+                )
                 scraper.addJavascriptInterface(this@SearchBridge, "SearchBridge")
                 scraper.loadUrl(searchUrl)
             }
