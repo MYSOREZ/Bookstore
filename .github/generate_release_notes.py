@@ -10,7 +10,6 @@ content = f"""### 📖 Книжная лавка (Bookstore) — Комбайн 
 - 🌐 Интеллектуальный переводчик (Gemini AI, Google PA, Edge Free, Custom AI)
 - 🤖 Автоматизация публикации на форум 4PDA
 - 🔍 Поиск по библиотекам (Флибуста, Anna's Archive, GigaBooks, ReadToday, Z-Library)
-- 🛡️ ProGuard: Защита и минификация кода
 - 🎨 UI: Современная тёмная тема Glassmorphism
 
 **Требования:**
