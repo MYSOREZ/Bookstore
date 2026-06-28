@@ -711,6 +711,7 @@ async function startTranslation() {
   }
 
   S.translationAborted = false;
+  trLog('Старт перевода: движок=' + S.engine + ', блоков=' + textBlocks.length + ', язык=' + S.langPair);
   document.getElementById('btnTranslate').style.display = 'none';
   document.getElementById('btnStop').style.display = 'block';
   setProgress(0, 'Начало перевода...');
@@ -892,6 +893,7 @@ async function _googlePARequest(text, src, dst, apiKey) {
     'query.text': text
   });
   const url = `https://translate-pa.googleapis.com/v1/translate?${params.toString()}`;
+  trLog('Google PA: запрос ' + text.length + ' символов, src=' + effectiveSrc + '→' + dst);
   const headers = {
     'Accept': '*/*',
     'Content-Type': 'application/x-www-form-urlencoded',
@@ -899,8 +901,15 @@ async function _googlePARequest(text, src, dst, apiKey) {
   };
   return new Promise((resolve, reject) => {
     callNative(url, 'GET', '', headers, (res, err) => {
-      if (err) return reject(new Error('Сеть: ' + err));
-      if (!res) return reject(new Error('Пустой ответ от Google PA'));
+      if (err) {
+        trLog('Google PA ОШИБКА СЕТИ: ' + err);
+        return reject(new Error('Сеть: ' + err));
+      }
+      if (!res) {
+        trLog('Google PA: пустой ответ');
+        return reject(new Error('Пустой ответ от Google PA'));
+      }
+      trLog('Google PA: ответ ' + res.length + ' символов: ' + res.slice(0, 120));
       try {
         const data = JSON.parse(res);
         if (data.translation) {
@@ -911,6 +920,7 @@ async function _googlePARequest(text, src, dst, apiKey) {
           throw new Error('Неожиданный формат: ' + JSON.stringify(data).slice(0, 100));
         }
       } catch(e) {
+        trLog('Google PA PARSE ОШИБКА: ' + e.message);
         reject(new Error('Google PA: ' + e.message));
       }
     });
@@ -1274,6 +1284,13 @@ function esc(s) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+function trLog(msg) {
+  console.error('[TR] ' + msg);
+  if (window.AndroidBridge && AndroidBridge.showToast) {
+    AndroidBridge.showToast(msg);
+  }
+}
+
 function transliterate(t) {
   const map = {
     'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I','Й':'Y','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T','У':'U','Ф':'F','Х':'Kh','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Shch','Ъ':'','Ы':'Y','Ь':'','Э':'E','Ю':'Yu','Я':'Ya',
@@ -1307,23 +1324,24 @@ window.onNativeResponse = function(id, errB64, dataB64) {
 
 function callNative(url, method, body, headers, callback) {
   if (window.AndroidBridge && AndroidBridge.nativeRequest) {
-    // Используем nativeRequest — реальный Java-метод с ID-паттерном callback
     const id = 'nc' + (++_nativeCbId);
     _nativeCbs[id] = callback;
+    trLog('callNative: ' + method + ' ' + url.slice(0, 80) + '...');
     try {
       AndroidBridge.nativeRequest(url, method, body || '', JSON.stringify(headers || {}), id);
     } catch(e) {
       delete _nativeCbs[id];
+      trLog('callNative ОШИБКА: ' + e.message);
       callback('', e.message);
     }
   } else {
-    // Fallback: fetch (для браузерного тестирования)
+    trLog('callNative: AndroidBridge недоступен, используем fetch()');
     const opts = { method, headers: headers || {} };
     if (body && method !== 'GET') opts.body = body;
     fetch(url, opts)
       .then(r => r.text())
       .then(t => callback(t, null))
-      .catch(e => callback('', e.message));
+      .catch(e => { trLog('callNative fetch ОШИБКА: ' + e.message); callback('', e.message); });
   }
 }
 </script>

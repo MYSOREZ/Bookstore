@@ -660,6 +660,7 @@ class MainActivity : AppCompatActivity() {
 
         @android.webkit.JavascriptInterface
         fun nativeRequest(url: String, method: String, body: String, headersJson: String, callbackJsId: String) {
+            AppLogger.i("TR_NATIVE", "[$callbackJsId] $method ${url.take(100)}")
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     val client = okhttp3.OkHttpClient.Builder()
@@ -684,6 +685,7 @@ class MainActivity : AppCompatActivity() {
 
                     val response = client.newCall(requestBuilder.build()).execute()
                     val respBody = response.body?.string() ?: ""
+                    AppLogger.i("TR_NATIVE", "[$callbackJsId] HTTP ${response.code}, body=${respBody.take(100)}")
                     
                     if (response.isSuccessful) {
                         val b64 = android.util.Base64.encodeToString(respBody.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
@@ -692,6 +694,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     } else {
                         val err = "HTTP ${response.code}: $respBody"
+                        AppLogger.e("TR_NATIVE", "[$callbackJsId] ОШИБКА: $err")
                         val b64Err = android.util.Base64.encodeToString(err.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
                         runOnUiThread {
                             translatorCallback("window.onNativeResponse('$callbackJsId', '$b64Err', null)")
@@ -699,6 +702,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 } catch (e: Exception) {
                     val err = e.message ?: "Unknown error"
+                    AppLogger.e("TR_NATIVE", "[$callbackJsId] EXCEPTION: $err")
                     val b64Err = android.util.Base64.encodeToString(err.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
                     runOnUiThread {
                         translatorCallback("window.onNativeResponse('$callbackJsId', '$b64Err', null)")
@@ -1856,7 +1860,6 @@ class MainActivity : AppCompatActivity() {
         /** Открывает страницу поиска с нужной строкой запроса */
         @android.webkit.JavascriptInterface
         fun searchOnSite(siteId: String, query: String, domain: String) {
-            // Формируем URL поиска для каждого сайта
             val searchUrl = when (siteId) {
                 "flibusta"  -> "$domain/booksearch?ask=${android.net.Uri.encode(query)}&chb=1"
                 "annas"     -> "$domain/search?q=${android.net.Uri.encode(query)}&lang=ru"
@@ -1865,8 +1868,8 @@ class MainActivity : AppCompatActivity() {
                 "zlib"      -> "$domain/s/${android.net.Uri.encode(query)}"
                 else        -> return
             }
+            AppLogger.i("SEARCH", "[$siteId] URL: $searchUrl")
 
-            // Используем невидимый временный WebView для загрузки страницы и парсинга DOM
             runOnUiThread {
                 val scraper = android.webkit.WebView(this@MainActivity)
                 activeScrapers.add(scraper)
@@ -1882,10 +1885,12 @@ class MainActivity : AppCompatActivity() {
                 scraper.webViewClient = DohWebViewClient(
                     siteId = siteId,
                     onExtract = { view ->
+                        AppLogger.i("SEARCH", "[$siteId] onPageFinished, запускаю extraction JS")
                         val jsExtract = buildExtractJs(siteId)
                         view?.evaluateJavascript(jsExtract, null)
                     },
                     onError = {
+                        AppLogger.e("SEARCH", "[$siteId] ОШИБКА загрузки страницы")
                         activeScrapers.remove(scraper)
                         scraper.destroy()
                         searchCallback("window.onSiteError && window.onSiteError('$siteId', 'Сайт недоступен');")

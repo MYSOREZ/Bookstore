@@ -602,19 +602,21 @@ function setSearchBtnLoading(on) {
 
 // Called by Kotlin when results for one site are ready
 window.onSiteResults = function(siteId, jsonStr) {
+  console.error('[SR] onSiteResults ' + siteId + ': ' + (typeof jsonStr === 'string' ? jsonStr.slice(0, 200) : JSON.stringify(jsonStr).slice(0, 200)));
   try {
     const results = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
     const pstat = document.getElementById('pstat-' + siteId);
 
     if (!results || results.length === 0) {
-      if (pstat) { pstat.textContent = 'Не найдено'; pstat.className = 'progress-status empty'; }
+      if (pstat) { pstat.textContent = 'Пусто (парсинг OK)'; pstat.className = 'progress-status empty'; }
     } else {
       if (pstat) { pstat.textContent = '✓ ' + results.length; pstat.className = 'progress-status done'; }
       results.forEach(r => { r.source = siteId; allResults.push(r); });
     }
   } catch(e) {
+    console.error('[SR] Parse error for ' + siteId + ': ' + e.message);
     const pstat = document.getElementById('pstat-' + siteId);
-    if (pstat) { pstat.textContent = 'Ошибка'; pstat.className = 'progress-status error'; }
+    if (pstat) { pstat.textContent = 'Ошибка парсинга'; pstat.className = 'progress-status error'; }
   }
 
   pendingSites--;
@@ -626,8 +628,9 @@ window.onSiteResults = function(siteId, jsonStr) {
 };
 
 window.onSiteError = function(siteId, msg) {
+  console.error('[SR] onSiteError ' + siteId + ': ' + msg);
   const pstat = document.getElementById('pstat-' + siteId);
-  if (pstat) { pstat.textContent = 'Недоступен'; pstat.className = 'progress-status error'; }
+  if (pstat) { pstat.textContent = 'Ошибка: ' + (msg || 'недоступен'); pstat.className = 'progress-status error'; }
   pendingSites--;
   if (pendingSites <= 0) {
     setSearchBtnLoading(false);

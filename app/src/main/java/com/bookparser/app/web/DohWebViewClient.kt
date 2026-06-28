@@ -101,12 +101,17 @@ class DohWebViewClient(
     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
         if (request == null || !request.isForMainFrame) return null
         val url = request.url.toString()
-        val result = fetchViaDoh(url) ?: return null
+        com.bookparser.app.AppLogger.i("DOH", "[$siteId] Intercepts: $url")
+        val result = fetchViaDoh(url) ?: run {
+            com.bookparser.app.AppLogger.e("DOH", "[$siteId] fetchViaDoh FAILED: $url")
+            return null
+        }
         val (bytes, contentType) = result
         val mime = contentType.split(";")[0].trim().ifEmpty { "text/html" }
         val encoding = if (contentType.contains("charset=")) {
             contentType.split("charset=")[1].trim().split("[;, ]")[0]
         } else "UTF-8"
+        com.bookparser.app.AppLogger.i("DOH", "[$siteId] OK: ${bytes.size} bytes, mime=$mime")
         return WebResourceResponse(mime, encoding, ByteArrayInputStream(bytes))
     }
 
