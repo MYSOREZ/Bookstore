@@ -300,6 +300,11 @@ select.sel-inp {
     ✨ Перевести книгу
   </button>
 
+  <!-- STOP BUTTON -->
+  <button class="btn-tr" id="btnStop" onclick="stopTranslation()" style="display:none;background:linear-gradient(135deg,#ef4444,#dc2626)">
+    ⏹ Остановить перевод
+  </button>
+
   <!-- RESULT -->
   <div id="resCard" class="res-card">
     <div class="label">Результат</div>
@@ -331,7 +336,8 @@ const S = {
   geminiKey: null,
   customUrl: null,
   customKey: null,
-  customModel: null
+  customModel: null,
+  translationAborted: false
 };
 
 const LANG_NAMES = {
@@ -353,9 +359,7 @@ function selEng(e) {
 
 // Перехват JS-ошибок для отладки в Android
 window.onerror = function(msg, src, line, col, err) {
-  if (window.AndroidBridge && AndroidBridge.log) {
-    AndroidBridge.log('[TR ERROR] ' + msg + ' (' + line + ':' + col + ')');
-  }
+  console.error('[TR ERROR] ' + msg + ' (' + (src||'') + ':' + line + ')');
   return false;
 };
 
@@ -681,6 +685,15 @@ function parseGlossary() {
 // ═══════════════════════════════════════
 //  TRANSLATION CORE
 // ═══════════════════════════════════════
+function stopTranslation() {
+  S.translationAborted = true;
+  showStatus('⏹ Перевод остановлен пользователем', 'info');
+  document.getElementById('btnStop').style.display = 'none';
+  document.getElementById('btnTranslate').style.display = 'block';
+  document.getElementById('btnTranslate').disabled = false;
+  hideProgress();
+}
+
 async function startTranslation() {
   parseGlossary();
   S.langPair = document.getElementById('langPair').value;
@@ -697,17 +710,23 @@ async function startTranslation() {
     showStatus('❌ Нет блоков для перевода', 'err'); return;
   }
 
-  document.getElementById('btnTranslate').disabled = true;
+  S.translationAborted = false;
+  document.getElementById('btnTranslate').style.display = 'none';
+  document.getElementById('btnStop').style.display = 'block';
   setProgress(0, 'Начало перевода...');
 
   const textBlocks = S.blocks.filter(b => b.type === 'text');
   let done = 0;
+  let totalErrors = 0;
 
-  // Переводим батчами по CHUNK_SIZE блоков за раз
   const BATCH = 20;
   for (let i = 0; i < textBlocks.length; i += BATCH) {
+    if (S.translationAborted) {
+      showStatus('⏹ Перевод остановлен. Переведено: ' + done + '/' + textBlocks.length, 'info');
+      break;
+    }
+
     const batch = textBlocks.slice(i, i + BATCH);
-    // Собираем батч через разделитель ◆◆◆◆
     const combined = batch.map(b => b.original).join('\n◆◆◆◆\n');
     try {
       const translated = await translateWithRetry(combined, 2);
@@ -716,12 +735,13 @@ async function startTranslation() {
         batch[j].translated = (parts[j] || batch[j].original).trim();
       }
     } catch(e) {
-      // Если батч не получился — переводим по одному
       for (const blk of batch) {
+        if (S.translationAborted) break;
         try {
           blk.translated = await translateWithRetry(blk.original, 2);
         } catch(e2) {
-          blk.translated = blk.original; // Оставляем оригинал при неудаче
+          blk.translated = blk.original;
+          totalErrors++;
         }
         done++;
         setProgress(Math.round(done / textBlocks.length * 100), `Переведено: ${done}/${textBlocks.length}`);
@@ -736,35 +756,52 @@ async function startTranslation() {
     await sleep(150);
   }
 
-  // Собираем итоговый текст для превью
   const resultText = textBlocks.map(b => b.translated || b.original).join('\n\n');
   document.getElementById('resText').value = resultText;
   document.getElementById('resCard').classList.add('show');
   hideProgress();
+  document.getElementById('btnStop').style.display = 'none';
+  document.getElementById('btnTranslate').style.display = 'block';
   document.getElementById('btnTranslate').disabled = false;
-  showStatus('✅ Перевод завершён! Блоков: ' + textBlocks.length, 'ok');
-}
 
-// Retry-обёртка
-async function translateWithRetry(text, retries) {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await translateBlock(text);
-    } catch(e) {
-      if (attempt === retries) throw e;
-      await sleep(1500 * (attempt + 1));
+  if (!S.translationAborted) {
+    if (totalErrors > 0) {
+      showStatus('⚠️ Перевод завершён с ошибками: ' + totalErrors + ' блоков не переведены. Проверьте VPN или смените движок.', 'err');
+    } else {
+      showStatus('✅ Перевод завершён! Блоков: ' + textBlocks.length, 'ok');
     }
   }
 }
 
+// Retry-обёртка
+async function translateWithRetry(text, retries) {
+  let lastErr = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await translateBlock(text);
+    } catch(e) {
+      lastErr = e;
+      if (attempt < retries) await sleep(1500 * (attempt + 1));
+    }
+  }
+  throw lastErr;
+}
+
 async function translateBlock(text) {
   if (!text) return '';
-  switch(S.engine) {
-    case 'gemini': return await trGemini(text);
-    case 'google_pa': return await trGooglePA(text);
-    case 'edge': return await trEdge(text);
-    case 'custom': return await trCustom(text);
-    default: return text;
+  try {
+    switch(S.engine) {
+      case 'gemini': return await trGemini(text);
+      case 'google_pa': return await trGooglePA(text);
+      case 'edge': return await trEdge(text);
+      case 'custom': return await trCustom(text);
+      default: return text;
+    }
+  } catch(e) {
+    if (S.engine === 'google_pa') {
+      try { return await trEdge(text); } catch(e2) { throw e; }
+    }
+    throw e;
   }
 }
 
@@ -862,7 +899,8 @@ async function _googlePARequest(text, src, dst, apiKey) {
   };
   return new Promise((resolve, reject) => {
     callNative(url, 'GET', '', headers, (res, err) => {
-      if (err) return reject(new Error(err));
+      if (err) return reject(new Error('Сеть: ' + err));
+      if (!res) return reject(new Error('Пустой ответ от Google PA'));
       try {
         const data = JSON.parse(res);
         if (data.translation) {
@@ -870,10 +908,10 @@ async function _googlePARequest(text, src, dst, apiKey) {
         } else if (data[0] && data[0][0]) {
           resolve(data[0][0]);
         } else {
-          throw new Error('Unexpected response format');
+          throw new Error('Неожиданный формат: ' + JSON.stringify(data).slice(0, 100));
         }
       } catch(e) {
-        reject(new Error('Google Translate Error: ' + e.message));
+        reject(new Error('Google PA: ' + e.message));
       }
     });
   });
@@ -903,15 +941,16 @@ async function trEdge(text) {
   if (!window._edgeToken || Date.now() > window._edgeTokenExp) {
     const authUrl = 'https://edge.microsoft.com/translate/auth';
     const res = await new Promise((resolve, reject) => {
-      callNative(authUrl, 'GET', '', {}, (res, err) => err ? reject(err) : resolve(res));
+      callNative(authUrl, 'GET', '', {}, (res, err) => err ? reject(new Error('Edge auth failed: ' + err)) : resolve(res));
     });
+    if (!res || !res.includes('.')) throw new Error('Edge: невалидный токен');
     const parts = res.split('.');
     if (parts.length > 1) {
       const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
       window._edgeToken = res;
       window._edgeTokenExp = (payload.exp * 1000) - 60000;
     } else {
-      throw new Error('Invalid Edge Token');
+      throw new Error('Edge: не удалось получить токен авторизации');
     }
   }
   const [src, dst] = S.langPair.split('|');
@@ -924,11 +963,16 @@ async function trEdge(text) {
   };
   return new Promise((resolve, reject) => {
     callNative(url, 'POST', body, headers, (res, err) => {
-      if (err) return reject(new Error(err));
+      if (err) return reject(new Error('Edge translate: ' + err));
+      if (!res) return reject(new Error('Edge: пустой ответ'));
       try {
         const data = JSON.parse(res);
-        resolve(data[0].translations[0].text.trim());
-      } catch(e) { reject(new Error('Edge Parse Error')); }
+        if (data[0] && data[0].translations && data[0].translations[0]) {
+          resolve(data[0].translations[0].text.trim());
+        } else {
+          throw new Error('Формат: ' + JSON.stringify(data).slice(0, 100));
+        }
+      } catch(e) { reject(new Error('Edge: ' + e.message)); }
     });
   });
 }

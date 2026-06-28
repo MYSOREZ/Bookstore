@@ -1902,22 +1902,25 @@ class MainActivity : AppCompatActivity() {
                 (function() {
                     function doParse() {
                         var results = [];
-                        var items = document.querySelectorAll('#main ul li a[href^="/b/"], #main li a[href*="/b/"], ul li a[href^="/b/"]');
+                        var items = document.querySelectorAll('ul li a[href^="/b/"], a[href*="/b/"]');
                         if (items.length === 0) {
-                            var noResults = document.body.textContent.toLowerCase();
-                            if (noResults.includes('ничего не найдено') || noResults.includes('not found') || noResults.includes('no results')) return '[]';
+                            var body = document.body ? document.body.textContent.toLowerCase() : '';
+                            if (body.includes('ничего не найдено') || body.includes('нет результатов') || body.includes('not found')) return '[]';
                             return null;
                         }
                         items.forEach(function(a) {
-                            var li = a.closest('li');
-                            if (!li) return;
-                            var title = a.textContent.trim();
-                            var href = a.href;
-                            var authorA = li.querySelector('a[href^="/a/"], a[href*="/a/"]');
-                            var author = authorA ? authorA.textContent.trim() : '';
-                            var bookId = href.match(/\\/b\\/(\\d+)/)?.[1];
+                            var title = a.textContent.replace(/<[^>]*>/g,'').trim();
+                            var href = a.href || '';
+                            var bookId = href.match(/\\/b\\/(\\d+)/);
                             if (!bookId) return;
-                            var base = href.split('/b/')[0] + '/b/' + bookId;
+                            var base = href.split('/b/')[0] + '/b/' + bookId[1];
+                            var li = a.closest('li');
+                            var author = '';
+                            if (li) {
+                                var authorA = li.querySelector('a[href^="/a/"], a[href*="/a/"]');
+                                author = authorA ? authorA.textContent.trim() : '';
+                            }
+                            if (results.some(function(r){return r.pageUrl===base;})) return;
                             results.push({
                                 title: title,
                                 author: author,
@@ -1939,7 +1942,7 @@ class MainActivity : AppCompatActivity() {
                         } else if (res) {
                             clearInterval(timer);
                             window.SearchBridge.deliverSearchResults('flibusta', res);
-                        } else if (++attempts > 20) {
+                        } else if (++attempts > 25) {
                             clearInterval(timer);
                             window.SearchBridge.deliverSearchResults('flibusta', '[]');
                         }
@@ -1949,34 +1952,38 @@ class MainActivity : AppCompatActivity() {
             "annas" -> """
                 (function() {
                     function doParse() {
+                        var body = document.body ? document.body.textContent.toLowerCase() : '';
+                        if (body.includes('click for continue') || body.includes('antibot') || body.includes('loading...')) return null;
                         var loadingIndicator = document.querySelector('.loading, [class*=spinner], [class*=load]');
                         if (loadingIndicator && loadingIndicator.offsetParent !== null) return null;
                         
                         var results = [];
                         var cards = document.querySelectorAll('a[href*="/md5/"]');
                         if (cards.length === 0) {
+                            cards = document.querySelectorAll('a[href*="/books/"], a[href*="/comics/"], a[href*="/scientific/"]');
+                        }
+                        if (cards.length === 0) {
                             cards = document.querySelectorAll('main a[href*="/"], .results a, [class*=result] a');
                         }
                         if (cards.length === 0) {
-                            var noResults = document.body.textContent.toLowerCase();
-                            if (noResults.includes('no results') || noResults.includes('not found') || noResults.includes('ничего не найдено')) return '[]';
+                            if (body.includes('no results') || body.includes('not found') || body.includes('ничего не найдено')) return '[]';
                             return null;
                         }
-                        var seen = new Set();
+                        var seen = {};
                         cards.forEach(function(a) {
                             var href = a.href;
-                            if (!href || seen.has(href)) return;
-                            if (!href.includes('/md5/')) {
+                            if (!href || seen[href]) return;
+                            if (!href.includes('/md5/') && !href.includes('/books/') && !href.includes('/comics/') && !href.includes('/scientific/')) {
                                 var parent = a.closest('[class*=result], [class*=item], article');
                                 if (!parent) return;
-                                var mdLink = parent.querySelector('a[href*="/md5/"]');
+                                var mdLink = parent.querySelector('a[href*="/md5/"], a[href*="/books/"]');
                                 if (mdLink) href = mdLink.href;
                                 else return;
                             }
-                            var titleEl = a.querySelector('h3, .text-lg, .font-bold, [class*="title"]');
+                            var titleEl = a.querySelector('h3, h4, .text-lg, .font-bold, [class*="title"]');
                             var title = titleEl ? titleEl.textContent.trim() : a.textContent.trim().split('\\n')[0];
                             if (!title || title.length < 2) return;
-                            seen.add(href);
+                            seen[href] = true;
                             var authorEl = a.querySelector('[class*="author"], .text-sm, .italic');
                             var author = authorEl ? authorEl.textContent.trim() : '';
                             var fmtEl = a.querySelector('[class*="format"], .uppercase');
@@ -1999,7 +2006,7 @@ class MainActivity : AppCompatActivity() {
                         } else if (res) {
                             clearInterval(timer);
                             window.SearchBridge.deliverSearchResults('annas', res);
-                        } else if (++attempts > 20) {
+                        } else if (++attempts > 25) {
                             clearInterval(timer);
                             window.SearchBridge.deliverSearchResults('annas', '[]');
                         }
@@ -2047,7 +2054,7 @@ class MainActivity : AppCompatActivity() {
                         if (res) {
                             clearInterval(timer);
                             window.SearchBridge.deliverSearchResults('${siteId}', res);
-                        } else if (++attempts > 20) {
+                        } else if (++attempts > 25) {
                             clearInterval(timer);
                             window.SearchBridge.deliverSearchResults('${'$'}{siteId}', '[]');
                         }
@@ -2057,23 +2064,25 @@ class MainActivity : AppCompatActivity() {
             "zlib" -> """
                 (function() {
                     function doParse() {
+                        var body = document.body ? document.body.textContent : '';
+                        if (body.includes('Click here to enter') || body.includes('Antibot') || body.includes('fingerprint')) return null;
                         var results = [];
-                        var cards = document.querySelectorAll('.book-card, .book-item, .bookCard, article, [class*=book]');
-                        if (cards.length === 0) cards = document.querySelectorAll('.table-books tr, .search-result-item');
+                        var cards = document.querySelectorAll('.book-card, .book-item, .bookCard, article, [class*=book], a[href*="/book/"]');
+                        if (cards.length === 0) cards = document.querySelectorAll('.table-books tr, .search-result-item, .resItem');
                         if (cards.length === 0) return null;
-                        var seen = new Set();
+                        var seen = {};
                         cards.forEach(function(el) {
                             var a = el.querySelector('a[href*="book"], h3 a, h2 a, .title a') || el.querySelector('a');
                             if (!a) return;
                             var href = a.href;
-                            if (!href || seen.has(href)) return;
-                            seen.add(href);
+                            if (!href || seen[href]) return;
+                            seen[href] = true;
                             var title = (el.querySelector('h3, h2, .title, [class*=title]') || a).textContent.trim();
                             if (!title || title.length < 2) return;
                             var authorEl = el.querySelector('.authors, .author, [class*=author]');
                             var author = authorEl ? authorEl.textContent.trim() : '';
                             var fmts = [];
-                            el.querySelectorAll('a[href*="/dl/"], a.btn-primary, a[class*=download]').forEach(function(dl) {
+                            el.querySelectorAll('a[href*="/dl/"], a.btn-primary, a[class*=download], a[href*="download"]').forEach(function(dl) {
                                 var ext = dl.textContent.trim().toUpperCase() || 'Скачать';
                                 fmts.push({label: ext, url: dl.href});
                             });
@@ -2092,7 +2101,7 @@ class MainActivity : AppCompatActivity() {
                         if (res) {
                             clearInterval(timer);
                             window.SearchBridge.deliverSearchResults('zlib', res);
-                        } else if (++attempts > 20) {
+                        } else if (++attempts > 25) {
                             clearInterval(timer);
                             window.SearchBridge.deliverSearchResults('zlib', '[]');
                         }
