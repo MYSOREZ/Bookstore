@@ -1,17 +1,13 @@
-package com.bookparser.app.web
+package com.bookparser.app.web.search
 
-import android.content.Context
-import android.net.Uri
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import com.bookparser.app.AppLogger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.net.InetAddress
-import java.net.UnknownHostException
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
@@ -19,11 +15,14 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
-class DohWebViewClient(
-    private val siteId: String,
-    private val onExtract: (WebView?) -> Unit,
-    private val onError: () -> Unit
-) : WebViewClient() {
+class DohHttpClient private constructor() {
+
+    companion object {
+        val INSTANCE = DohHttpClient()
+        private const val TAG = "DOH_HTTP"
+        private const val USER_AGENT =
+            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36"
+    }
 
     private val dohClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -66,14 +65,49 @@ class DohWebViewClient(
             }
             null
         } catch (e: Exception) {
+            AppLogger.e(TAG, "DoH resolve failed for $hostname: ${e.message}")
             null
         }
     }
 
-    private fun fetchViaDoh(url: String): Pair<ByteArray, String>? {
-        return try {
-            val uri = Uri.parse(url)
-            val hostname = uri.host ?: return null
+    suspend fun fetchViaDoh(url: String, extraHeaders: Map<String, String> = emptyMap()): String? = withContext(Dispatchers.IO) {
+        try {
+            val uri = java.net.URI(url)
+            val hostname = uri.host ?: return@withContext null
+            val ip = resolveViaDoh(hostname)
+            val actualUrl = if (ip != null) {
+                url.replace("://$hostname", "://${ip.hostAddress}")
+            } else {
+                url
+            }
+            AppLogger.i(TAG, "Fetching: $url (IP: ${ip?.hostAddress ?: "direct"})")
+            val builder = Request.Builder()
+                .url(actualUrl)
+                .header("Host", hostname)
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .header("Accept-Language", "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7")
+            extraHeaders.forEach { (k, v) -> builder.header(k, v) }
+            val request = builder.build()
+            val response = sslClient.newCall(request).execute()
+            if (response.isSuccessful) {
+                val bytes = response.body?.bytes() ?: return@withContext null
+                AppLogger.i(TAG, "OK: ${bytes.size} bytes from $hostname")
+                String(bytes, Charsets.UTF_8)
+            } else {
+                AppLogger.e(TAG, "HTTP ${response.code} from $hostname")
+                null
+            }
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Fetch failed for $url: ${e.message}")
+            null
+        }
+    }
+
+    suspend fun fetchViaDohBytes(url: String): Pair<ByteArray, String>? = withContext(Dispatchers.IO) {
+        try {
+            val uri = java.net.URI(url)
+            val hostname = uri.host ?: return@withContext null
             val ip = resolveViaDoh(hostname)
             val actualUrl = if (ip != null) {
                 url.replace("://$hostname", "://${ip.hostAddress}")
@@ -83,45 +117,19 @@ class DohWebViewClient(
             val request = Request.Builder()
                 .url(actualUrl)
                 .header("Host", hostname)
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36")
+                .header("User-Agent", USER_AGENT)
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                 .header("Accept-Language", "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7")
                 .build()
             val response = sslClient.newCall(request).execute()
             if (response.isSuccessful) {
-                val bytes = response.body?.bytes() ?: return null
+                val bytes = response.body?.bytes() ?: return@withContext null
                 val contentType = response.header("Content-Type") ?: "text/html; charset=UTF-8"
                 Pair(bytes, contentType)
             } else null
         } catch (e: Exception) {
+            AppLogger.e(TAG, "FetchBytes failed for $url: ${e.message}")
             null
-        }
-    }
-
-    override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-        if (request == null || !request.isForMainFrame) return null
-        val url = request.url.toString()
-        com.bookparser.app.AppLogger.i("DOH", "[$siteId] Intercepts: $url")
-        val result = fetchViaDoh(url) ?: run {
-            com.bookparser.app.AppLogger.e("DOH", "[$siteId] fetchViaDoh FAILED: $url")
-            return null
-        }
-        val (bytes, contentType) = result
-        val mime = contentType.split(";")[0].trim().ifEmpty { "text/html" }
-        val encoding = if (contentType.contains("charset=")) {
-            contentType.split("charset=")[1].trim().split("[;, ]")[0]
-        } else "UTF-8"
-        com.bookparser.app.AppLogger.i("DOH", "[$siteId] OK: ${bytes.size} bytes, mime=$mime")
-        return WebResourceResponse(mime, encoding, ByteArrayInputStream(bytes))
-    }
-
-    override fun onPageFinished(view: WebView?, url: String?) {
-        onExtract(view)
-    }
-
-    override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: android.webkit.WebResourceError?) {
-        if (request?.isForMainFrame == true) {
-            onError()
         }
     }
 }

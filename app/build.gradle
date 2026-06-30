@@ -14,8 +14,8 @@ android {
         applicationId "com.bookparser.app"
         minSdk 26
         targetSdk 34
-        versionCode 16
-        versionName "7.15"
+        versionCode 32
+        versionName "7.31"
         
         vectorDrawables { 
             useSupportLibrary = true
@@ -125,4 +125,6 @@ dependencies {
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
     implementation "io.coil-kt:coil:2.5.0"
     implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2"
+
+    testImplementation "junit:junit:4.13.2"
 }

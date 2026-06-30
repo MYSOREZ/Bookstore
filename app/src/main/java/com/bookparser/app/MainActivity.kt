@@ -27,7 +27,7 @@ import com.bookparser.app.processing.BookMetadata
 import com.bookparser.app.parser.GenreMapping
 import com.bookparser.app.web.WebDomAutomation
 import com.bookparser.app.web.EncryptedWebViewClient
-import com.bookparser.app.web.DohWebViewClient
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -112,6 +112,8 @@ class MainActivity : AppCompatActivity() {
         setupTranslatorWebView()
         setupGeminiAuthWebView()
         setupSearchWebView()
+
+        com.bookparser.app.web.search.WebViewSearcher.init(this)
 
         webViewParser.loadUrl("file:///android_asset/parser.html")
         checkExistingAuth()
@@ -649,7 +651,7 @@ class MainActivity : AppCompatActivity() {
             val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
             val saved = prefs.getString(key, null)
             if (saved != null) return saved
-            
+
             // Provide public default keys if none saved
             return when (key) {
                 "google_pa_key" -> "AIzaSy" + "DLEeFI5OtFBwYBIoK_jj5m32rZK5CkCXA"
@@ -659,22 +661,51 @@ class MainActivity : AppCompatActivity() {
         }
 
         @android.webkit.JavascriptInterface
+        fun setKeepScreenOn(keepOn: Boolean) {
+            runOnUiThread {
+                if (keepOn) {
+                    window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
+        }
+
+        @android.webkit.JavascriptInterface
         fun nativeRequest(url: String, method: String, body: String, headersJson: String, callbackJsId: String) {
-            AppLogger.i("TR_NATIVE", "[$callbackJsId] $method ${url.take(100)}")
+            nativeRequestWithProxy(url, method, body, headersJson, callbackJsId, "", "", 0)
+        }
+
+        @android.webkit.JavascriptInterface
+        fun nativeRequestWithProxy(url: String, method: String, body: String, headersJson: String, callbackJsId: String, proxyType: String, proxyHost: String, proxyPort: Int) {
+            AppLogger.i("TR_NATIVE", "[$callbackJsId] $method ${url.take(100)} proxy=${proxyType}:${proxyHost}:${proxyPort}")
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
-                    val client = okhttp3.OkHttpClient.Builder()
+                    val clientBuilder = okhttp3.OkHttpClient.Builder()
                         .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
                         .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-                        .build()
 
+                    // Configure proxy if provided
+                    if (proxyType.isNotEmpty() && proxyHost.isNotEmpty() && proxyPort > 0) {
+                        val proxy = if (proxyType == "socks5") {
+                            java.net.Proxy(java.net.Proxy.Type.SOCKS, java.net.InetSocketAddress(proxyHost, proxyPort))
+                        } else {
+                            java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress(proxyHost, proxyPort))
+                        }
+                        clientBuilder.proxy(proxy)
+                        AppLogger.i("TR_NATIVE", "[$callbackJsId] Using proxy: $proxyType $proxyHost:$proxyPort")
+                    }
+
+                    val client = clientBuilder.build()
                     val requestBuilder = okhttp3.Request.Builder().url(url)
                     
-                    // Parse headers
+                    // Parse headers - strip Accept-Encoding to prevent gzip response issues
                     if (headersJson.isNotEmpty()) {
                         val headersObj = JSONObject(headersJson)
                         headersObj.keys().forEach { key ->
-                            requestBuilder.header(key, headersObj.getString(key))
+                            if (!key.equals("Accept-Encoding", ignoreCase = true)) {
+                                requestBuilder.header(key, headersObj.getString(key))
+                            }
                         }
                     }
 
@@ -684,7 +715,21 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     val response = client.newCall(requestBuilder.build()).execute()
-                    val respBody = response.body?.string() ?: ""
+                    var respBody = response.body?.string() ?: ""
+                    
+                    // Decompress gzip if response is compressed binary
+                    if (respBody.isNotEmpty() && respBody.startsWith("\u001F\u008B")) {
+                        try {
+                            val bytes = respBody.toByteArray(Charsets.ISO_8859_1)
+                            val bais = java.io.ByteArrayInputStream(bytes)
+                            val gis = java.util.zip.GZIPInputStream(bais)
+                            respBody = gis.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                            AppLogger.i("TR_NATIVE", "[$callbackJsId] Gzip decompressed OK")
+                        } catch (e: Exception) {
+                            AppLogger.w("TR_NATIVE", "[$callbackJsId] Gzip decompress failed: ${e.message}")
+                        }
+                    }
+                    
                     AppLogger.i("TR_NATIVE", "[$callbackJsId] HTTP ${response.code}, body=${respBody.take(100)}")
                     
                     if (response.isSuccessful) {
@@ -1840,14 +1885,11 @@ class MainActivity : AppCompatActivity() {
     //  SEARCH BRIDGE (JS ↔ Kotlin для поиска книг)
     // ════════════════════════════════════════════════
     inner class SearchBridge {
-        private val activeScrapers = mutableListOf<android.webkit.WebView>()
+        private val searchManager = com.bookparser.app.web.search.BookSearchManager()
 
         @android.webkit.JavascriptInterface
         fun stopSearch() {
-            runOnUiThread {
-                activeScrapers.forEach { it.destroy() }
-                activeScrapers.clear()
-            }
+            searchManager.stopAll()
         }
 
         @android.webkit.JavascriptInterface
@@ -1857,263 +1899,24 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        /** Открывает страницу поиска с нужной строкой запроса */
         @android.webkit.JavascriptInterface
-        fun searchOnSite(siteId: String, query: String, domain: String) {
-            val searchUrl = when (siteId) {
-                "flibusta"  -> "$domain/booksearch?ask=${android.net.Uri.encode(query)}&chb=1"
-                "annas"     -> "$domain/search?q=${android.net.Uri.encode(query)}&lang=ru"
-                "gigabooks" -> "$domain/?s=${android.net.Uri.encode(query)}"
-                "readtoday" -> "$domain/?s=${android.net.Uri.encode(query)}"
-                "zlib"      -> "$domain/s/${android.net.Uri.encode(query)}"
-                else        -> return
-            }
-            AppLogger.i("SEARCH", "[$siteId] URL: $searchUrl")
-
+        fun deliverSearchError(siteId: String, message: String) {
             runOnUiThread {
-                val scraper = android.webkit.WebView(this@MainActivity)
-                activeScrapers.add(scraper)
-                scraper.settings.apply {
-                    javaScriptEnabled = true
-                    domStorageEnabled = true
-                    userAgentString = MOBILE_UA
-                }
-                android.webkit.CookieManager.getInstance().apply {
-                    setAcceptCookie(true)
-                    setAcceptThirdPartyCookies(scraper, true)
-                }
-                scraper.webViewClient = DohWebViewClient(
-                    siteId = siteId,
-                    onExtract = { view ->
-                        AppLogger.i("SEARCH", "[$siteId] onPageFinished, запускаю extraction JS")
-                        val jsExtract = buildExtractJs(siteId)
-                        view?.evaluateJavascript(jsExtract, null)
-                    },
-                    onError = {
-                        AppLogger.e("SEARCH", "[$siteId] ОШИБКА загрузки страницы")
-                        activeScrapers.remove(scraper)
-                        scraper.destroy()
-                        searchCallback("window.onSiteError && window.onSiteError('$siteId', 'Сайт недоступен');")
-                    }
-                )
-                scraper.addJavascriptInterface(this@SearchBridge, "SearchBridge")
-                scraper.loadUrl(searchUrl)
+                searchCallback("window.onSiteError && window.onSiteError('$siteId', '${message.escapeJs()}');")
             }
         }
 
-        /** Строит JS-скрипт извлечения результатов для конкретного сайта */
-        private fun buildExtractJs(siteId: String): String = when (siteId) {
-            "flibusta" -> """
-                (function() {
-                    function doParse() {
-                        var results = [];
-                        var items = document.querySelectorAll('ul li a[href^="/b/"], a[href*="/b/"]');
-                        if (items.length === 0) {
-                            var body = document.body ? document.body.textContent.toLowerCase() : '';
-                            if (body.includes('ничего не найдено') || body.includes('нет результатов') || body.includes('not found')) return '[]';
-                            return null;
-                        }
-                        items.forEach(function(a) {
-                            var title = a.textContent.replace(/<[^>]*>/g,'').trim();
-                            var href = a.href || '';
-                            var bookId = href.match(/\\/b\\/(\\d+)/);
-                            if (!bookId) return;
-                            var base = href.split('/b/')[0] + '/b/' + bookId[1];
-                            var li = a.closest('li');
-                            var author = '';
-                            if (li) {
-                                var authorA = li.querySelector('a[href^="/a/"], a[href*="/a/"]');
-                                author = authorA ? authorA.textContent.trim() : '';
-                            }
-                            if (results.some(function(r){return r.pageUrl===base;})) return;
-                            results.push({
-                                title: title,
-                                author: author,
-                                pageUrl: base,
-                                formats: [
-                                    {label:'FB2', url: base+'/fb2'},
-                                    {label:'EPUB', url: base+'/epub'}
-                                ]
-                            });
-                        });
-                        return results.length > 0 ? JSON.stringify(results.slice(0, 30)) : '[]';
-                    }
-                    var attempts = 0;
-                    var timer = setInterval(function() {
-                        var res = doParse();
-                        if (res === '[]') {
-                            clearInterval(timer);
-                            window.SearchBridge.deliverSearchResults('flibusta', '[]');
-                        } else if (res) {
-                            clearInterval(timer);
-                            window.SearchBridge.deliverSearchResults('flibusta', res);
-                        } else if (++attempts > 25) {
-                            clearInterval(timer);
-                            window.SearchBridge.deliverSearchResults('flibusta', '[]');
-                        }
-                    }, 600);
-                })()
-            """
-            "annas" -> """
-                (function() {
-                    function doParse() {
-                        var body = document.body ? document.body.textContent.toLowerCase() : '';
-                        if (body.includes('click for continue') || body.includes('antibot') || body.includes('loading...')) return null;
-                        var loadingIndicator = document.querySelector('.loading, [class*=spinner], [class*=load]');
-                        if (loadingIndicator && loadingIndicator.offsetParent !== null) return null;
-                        
-                        var results = [];
-                        var cards = document.querySelectorAll('a[href*="/md5/"]');
-                        if (cards.length === 0) {
-                            cards = document.querySelectorAll('a[href*="/books/"], a[href*="/comics/"], a[href*="/scientific/"]');
-                        }
-                        if (cards.length === 0) {
-                            cards = document.querySelectorAll('main a[href*="/"], .results a, [class*=result] a');
-                        }
-                        if (cards.length === 0) {
-                            if (body.includes('no results') || body.includes('not found') || body.includes('ничего не найдено')) return '[]';
-                            return null;
-                        }
-                        var seen = {};
-                        cards.forEach(function(a) {
-                            var href = a.href;
-                            if (!href || seen[href]) return;
-                            if (!href.includes('/md5/') && !href.includes('/books/') && !href.includes('/comics/') && !href.includes('/scientific/')) {
-                                var parent = a.closest('[class*=result], [class*=item], article');
-                                if (!parent) return;
-                                var mdLink = parent.querySelector('a[href*="/md5/"], a[href*="/books/"]');
-                                if (mdLink) href = mdLink.href;
-                                else return;
-                            }
-                            var titleEl = a.querySelector('h3, h4, .text-lg, .font-bold, [class*="title"]');
-                            var title = titleEl ? titleEl.textContent.trim() : a.textContent.trim().split('\\n')[0];
-                            if (!title || title.length < 2) return;
-                            seen[href] = true;
-                            var authorEl = a.querySelector('[class*="author"], .text-sm, .italic');
-                            var author = authorEl ? authorEl.textContent.trim() : '';
-                            var fmtEl = a.querySelector('[class*="format"], .uppercase');
-                            var fmt = fmtEl ? fmtEl.textContent.trim().toUpperCase() : '';
-                            results.push({
-                                title: title,
-                                author: author,
-                                pageUrl: href,
-                                formats: fmt ? [{label: fmt, url: href}] : [{label: 'Открыть', url: href}]
-                            });
-                        });
-                        return results.length > 0 ? JSON.stringify(results.slice(0, 30)) : '[]';
-                    }
-                    var attempts = 0;
-                    var timer = setInterval(function() {
-                        var res = doParse();
-                        if (res === '[]') {
-                            clearInterval(timer);
-                            window.SearchBridge.deliverSearchResults('annas', '[]');
-                        } else if (res) {
-                            clearInterval(timer);
-                            window.SearchBridge.deliverSearchResults('annas', res);
-                        } else if (++attempts > 25) {
-                            clearInterval(timer);
-                            window.SearchBridge.deliverSearchResults('annas', '[]');
-                        }
-                    }, 600);
-                })()
-            """
-            "gigabooks", "readtoday" -> """
-                (function() {
-                    function doParse() {
-                        var results = [];
-                        var cards = document.querySelectorAll('article, .post-card, .book-card, .entry-summary, h2.entry-title, .post-title');
-                        if (cards.length === 0) {
-                            cards = document.querySelectorAll('main a[href*="' + location.host + '"], #main a');
-                        }
-                        if (cards.length === 0) return null;
-                        var seen = new Set();
-                        cards.forEach(function(el) {
-                            var a = el.tagName === 'A' ? el : el.querySelector('a[href]');
-                            if (!a) return;
-                            var href = a.href;
-                            if (!href || href === location.href || seen.has(href)) return;
-                            seen.add(href);
-                            var titleEl = el.querySelector('h2, h3, .entry-title, .post-title, .book-title') || a;
-                            var title = titleEl.textContent.trim();
-                            if (!title || title.length < 2) return;
-                            var authorEl = el.querySelector('.author, .book-author, [class*=author]');
-                            var author = authorEl ? authorEl.textContent.trim() : '';
-                            var fmts = [];
-                            el.querySelectorAll('a[href*=".fb2"], a[href*=".epub"], a[href*=".txt"]').forEach(function(dl) {
-                                var ext = dl.href.match(/\\.(fb2|epub|txt|pdf|mobi)/i)?.[1]?.toUpperCase();
-                                if (ext) fmts.push({label: ext, url: dl.href});
-                            });
-                            results.push({
-                                title: title,
-                                author: author,
-                                pageUrl: href,
-                                formats: fmts.length > 0 ? fmts : [{label: 'Открыть', url: href}]
-                            });
-                        });
-                        return JSON.stringify(results.slice(0, 30));
-                    }
-                    var attempts = 0;
-                    var timer = setInterval(function() {
-                        var res = doParse();
-                        if (res) {
-                            clearInterval(timer);
-                            window.SearchBridge.deliverSearchResults('${siteId}', res);
-                        } else if (++attempts > 25) {
-                            clearInterval(timer);
-                            window.SearchBridge.deliverSearchResults('${'$'}{siteId}', '[]');
-                        }
-                    }, 600);
-                })()
-            """
-            "zlib" -> """
-                (function() {
-                    function doParse() {
-                        var body = document.body ? document.body.textContent : '';
-                        if (body.includes('Click here to enter') || body.includes('Antibot') || body.includes('fingerprint')) return null;
-                        var results = [];
-                        var cards = document.querySelectorAll('.book-card, .book-item, .bookCard, article, [class*=book], a[href*="/book/"]');
-                        if (cards.length === 0) cards = document.querySelectorAll('.table-books tr, .search-result-item, .resItem');
-                        if (cards.length === 0) return null;
-                        var seen = {};
-                        cards.forEach(function(el) {
-                            var a = el.querySelector('a[href*="book"], h3 a, h2 a, .title a') || el.querySelector('a');
-                            if (!a) return;
-                            var href = a.href;
-                            if (!href || seen[href]) return;
-                            seen[href] = true;
-                            var title = (el.querySelector('h3, h2, .title, [class*=title]') || a).textContent.trim();
-                            if (!title || title.length < 2) return;
-                            var authorEl = el.querySelector('.authors, .author, [class*=author]');
-                            var author = authorEl ? authorEl.textContent.trim() : '';
-                            var fmts = [];
-                            el.querySelectorAll('a[href*="/dl/"], a.btn-primary, a[class*=download], a[href*="download"]').forEach(function(dl) {
-                                var ext = dl.textContent.trim().toUpperCase() || 'Скачать';
-                                fmts.push({label: ext, url: dl.href});
-                            });
-                            results.push({
-                                title: title,
-                                author: author,
-                                pageUrl: href,
-                                formats: fmts.length > 0 ? fmts : [{label: 'Открыть', url: href}]
-                            });
-                        });
-                        return JSON.stringify(results.slice(0, 30));
-                    }
-                    var attempts = 0;
-                    var timer = setInterval(function() {
-                        var res = doParse();
-                        if (res) {
-                            clearInterval(timer);
-                            window.SearchBridge.deliverSearchResults('zlib', res);
-                        } else if (++attempts > 25) {
-                            clearInterval(timer);
-                            window.SearchBridge.deliverSearchResults('zlib', '[]');
-                        }
-                    }, 600);
-                })()
-            """
-            else -> "'[]'"
+        @android.webkit.JavascriptInterface
+        fun searchOnSite(siteId: String, query: String, domain: String) {
+            AppLogger.i("SEARCH", "[$siteId] Delegating to BookSearchManager, domain=$domain")
+            searchManager.search(
+                siteId = siteId,
+                query = query,
+                domain = domain,
+                scope = lifecycleScope,
+                onResult = { id, json -> deliverSearchResults(id, json) },
+                onError = { id, msg -> deliverSearchError(id, msg) }
+            )
         }
 
         /** Скачивает файл в папку Downloads */

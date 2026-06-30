@@ -154,8 +154,7 @@ body {
 .result-source.src-flibusta { background: rgba(99,102,241,0.15); color: #a5b4fc; }
 .result-source.src-annas    { background: rgba(244,63,94,0.12);  color: #fda4af; }
 .result-source.src-zlib     { background: rgba(16,185,129,0.12); color: #6ee7b7; }
-.result-source.src-readtoday{ background: rgba(251,146,60,0.15); color: #fdba74; }
-.result-source.src-gigabooks{ background: rgba(139,92,246,0.15); color: #c4b5fd; }
+.result-source.src-librain  { background: rgba(59,130,246,0.15); color: #93c5fd; }
 
 .result-formats {
   padding: 8px 16px 12px;
@@ -371,23 +370,17 @@ body {
       <div class="site-name">Anna's Archive</div>
       <div class="site-desc">Мета-поисковик по всем<br>PDF, EPUB, FB2</div>
     </div>
-    <div class="site-card selected" id="scard-gigabooks" onclick="toggleSite('gigabooks')">
-      <div class="site-check" id="check-gigabooks">✓</div>
-      <span class="site-emoji">📚</span>
-      <div class="site-name">GigaBooks</div>
-      <div class="site-desc">Рус. онлайн-библиотека<br>FB2, EPUB, TXT</div>
-    </div>
-    <div class="site-card selected" id="scard-readtoday" onclick="toggleSite('readtoday')">
-      <div class="site-check" id="check-readtoday">✓</div>
-      <span class="site-emoji">📰</span>
-      <div class="site-name">ReadToday</div>
-      <div class="site-desc">Читать онлайн, скачать<br>FB2, EPUB, TXT</div>
-    </div>
-    <div class="site-card selected" id="scard-zlib" onclick="toggleSite('zlib')" style="grid-column: span 2;">
+    <div class="site-card selected" id="scard-zlib" onclick="toggleSite('zlib')">
       <div class="site-check" id="check-zlib">✓</div>
       <span class="site-emoji">📦</span>
       <div class="site-name">Z-Library</div>
       <div class="site-desc">Огромная библиотека. PDF, EPUB, FB2</div>
+    </div>
+    <div class="site-card selected" id="scard-librain" onclick="toggleSite('librain')">
+      <div class="site-check" id="check-librain">✓</div>
+      <span class="site-emoji">📚</span>
+      <div class="site-name">Librain</div>
+      <div class="site-desc">Рус. библиотека<br>FB2, EPUB</div>
     </div>
   </div>
 </div>
@@ -432,16 +425,12 @@ body {
     <input class="setting-input" id="domAnnas" placeholder="https://annas-archive.gd">
   </div>
   <div class="setting-row">
-    <span class="setting-label">GigaBooks</span>
-    <input class="setting-input" id="domGigabooks" placeholder="https://gigabooks.ru">
-  </div>
-  <div class="setting-row">
-    <span class="setting-label">ReadToday</span>
-    <input class="setting-input" id="domReadtoday" placeholder="https://readtoday.ru">
-  </div>
-  <div class="setting-row">
     <span class="setting-label">Z-Library</span>
     <input class="setting-input" id="domZlib" placeholder="https://ru.z-lib.fm">
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">Librain</span>
+    <input class="setting-input" id="domLibrain" placeholder="https://librain.ru">
   </div>
   <button class="btn-save-settings" onclick="saveSettings()">💾 Сохранить</button>
 </div>
@@ -456,21 +445,19 @@ body {
 const SITES = {
   flibusta:  { name: 'Флибуста',      cls: 'src-flibusta',  emoji: '📖' },
   annas:     { name: "Anna's Archive", cls: 'src-annas',     emoji: '🌍' },
-  gigabooks: { name: 'GigaBooks',     cls: 'src-gigabooks',  emoji: '📚' },
-  readtoday: { name: 'ReadToday',     cls: 'src-readtoday',  emoji: '📰' },
   zlib:      { name: 'Z-Library',     cls: 'src-zlib',       emoji: '📦' },
+  librain:   { name: 'Librain',       cls: 'src-librain',    emoji: '📚' },
 };
 
 const DEFAULT_DOMAINS = {
   flibusta:  'http://flibusta.is',
   annas:     'https://annas-archive.gd',
-  gigabooks: 'https://gigabooks.ru',
-  readtoday: 'https://readtoday.ru',
   zlib:      'https://ru.z-lib.fm',
+  librain:   'https://librain.ru',
 };
 
 let domains   = { ...DEFAULT_DOMAINS };
-let selected  = new Set(['flibusta','annas','gigabooks','readtoday','zlib']);
+let selected  = new Set(['flibusta','annas','zlib','librain']);
 let allResults = [];    // { title, author, source, formats: [{label, url, size}], pageUrl }
 let pendingSites = 0;   // sites still loading
 let searchQuery = '';

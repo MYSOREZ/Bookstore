@@ -75,7 +75,7 @@ body {
 }
 .card:active { transform: scale(0.99); }
 
-.eng-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.eng-row { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; }
 .eng-card {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--card-border);
@@ -171,6 +171,25 @@ select.sel-inp {
 
 .res-card { display: none; }
 .res-card.show { display: block; }
+
+.settings-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; cursor: pointer; border-radius: 14px;
+  background: rgba(255,255,255,0.03); border: 1px solid var(--card-border);
+  margin-bottom: 8px; font-size: 13px; color: var(--sub); font-weight: 600;
+}
+.settings-toggle .arrow { transition: transform 0.3s; }
+.settings-toggle.open .arrow { transform: rotate(180deg); }
+.settings-body { display: none; }
+.settings-body.show { display: block; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+.settings-row label { font-size: 12px; color: var(--sub); }
+.settings-row select, .settings-row input[type="range"] { max-width: 140px; }
+.cache-badge {
+  display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 8px;
+  border-radius: 20px; background: rgba(34,197,94,0.2); color: #4ade80;
+  border: 1px solid rgba(34,197,94,0.3); margin-left: 6px;
+}
 </style>
 </head>
 <body>
@@ -189,29 +208,29 @@ select.sel-inp {
   <!-- ENGINE -->
   <div class="label">Движок перевода</div>
   <div class="eng-row">
-    <div class="eng-card sel" id="eng-gemini">
+    <div class="eng-card sel" id="eng-google_auto">
       <span class="ck">✓</span>
-      <span class="eng-icon">✨</span>
-      <div class="eng-name">Gemini AI</div>
-      <span class="eng-tag tag-key">API Key</span>
+      <span class="eng-icon">🤖</span>
+      <div class="eng-name">Auto</div>
+      <span class="eng-tag tag-free">Фоллбэк</span>
+    </div>
+    <div class="eng-card" id="eng-google_old">
+      <span class="ck">✓</span>
+      <span class="eng-icon">🔄</span>
+      <div class="eng-name">Google Old</div>
+      <span class="eng-tag tag-free">Стабильный</span>
     </div>
     <div class="eng-card" id="eng-google_pa">
       <span class="ck">✓</span>
       <span class="eng-icon">🌐</span>
       <div class="eng-name">Google PA</div>
-      <span class="eng-tag tag-free">Calibre</span>
+      <span class="eng-tag tag-free">Быстрый</span>
     </div>
-    <div class="eng-card" id="eng-edge">
+    <div class="eng-card" id="eng-gemini">
       <span class="ck">✓</span>
-      <span class="eng-icon">🔷</span>
-      <div class="eng-name">Edge / MS</div>
-      <span class="eng-tag tag-free">Бесплатно</span>
-    </div>
-    <div class="eng-card" id="eng-custom">
-      <span class="ck">✓</span>
-      <span class="eng-icon">🤖</span>
-      <div class="eng-name">Custom AI</div>
-      <span class="eng-tag tag-custom">OpenAI API</span>
+      <span class="eng-icon">✨</span>
+      <div class="eng-name">Gemini</div>
+      <span class="eng-tag tag-key">AI</span>
     </div>
   </div>
 
@@ -220,7 +239,7 @@ select.sel-inp {
   <div class="card">
     <select class="sel-inp" id="langPair">
       <option value="auto|en">🌐 Авто → 🇬🇧 Английский</option>
-      <option value="ru|en" selected>🇷🇺 Русский → 🇬🇧 Английский</option>
+      <option value="ru|en">🇷🇺 Русский → 🇬🇧 Английский</option>
       <option value="fr|en">🇫🇷 Французский → 🇬🇧 Английский</option>
       <option value="de|en">🇩🇪 Немецкий → 🇬🇧 Английский</option>
       <option value="es|en">🇪🇸 Испанский → 🇬🇧 Английский</option>
@@ -230,7 +249,7 @@ select.sel-inp {
       <option value="uk|en">🇺🇦 Украинский → 🇬🇧 Английский</option>
       <option value="auto|ru">🌐 Авто → 🇷🇺 Русский</option>
       <option value="fr|ru">🇫🇷 Французский → 🇷🇺 Русский</option>
-      <option value="en|ru">🇬🇧 Английский → 🇷🇺 Русский</option>
+      <option value="en|ru" selected>🇬🇧 Английский → 🇷🇺 Русский</option>
       <option value="de|ru">🇩🇪 Немецкий → 🇷🇺 Русский</option>
       <option value="es|ru">🇪🇸 Испанский → 🇷🇺 Русский</option>
       <option value="it|ru">🇮🇹 Итальянский → 🇷🇺 Русский</option>
@@ -238,25 +257,6 @@ select.sel-inp {
       <option value="ja|ru">🇯🇵 Японский → 🇷🇺 Русский</option>
       <option value="uk|ru">🇺🇦 Украинский → 🇷🇺 Русский</option>
     </select>
-  </div>
-
-  <!-- GEMINI SETTINGS -->
-  <div id="geminiSettings">
-    <div class="label">Gemini API Key</div>
-    <div class="card">
-      <input class="inp" type="password" id="geminiKey" placeholder="AIza...">
-      <div class="hint">Получите ключ на aistudio.google.com</div>
-    </div>
-  </div>
-
-  <!-- CUSTOM AI SETTINGS -->
-  <div id="customSettings" style="display:none">
-    <div class="label">Custom AI Endpoint</div>
-    <div class="card">
-      <input class="inp" type="text" id="customUrl" placeholder="https://api.openai.com/v1/chat/completions" style="margin-bottom:10px">
-      <input class="inp" type="password" id="customKey" placeholder="API Key">
-      <input class="inp" type="text" id="customModel" placeholder="Model (e.g. gpt-4o)" style="margin-top:10px">
-    </div>
   </div>
 
   <!-- GLOSSARY -->
@@ -295,6 +295,66 @@ select.sel-inp {
     <div class="prog-label" id="progLabel">Подготовка...</div>
   </div>
 
+  <!-- SETTINGS -->
+  <div class="settings-toggle" id="settingsToggle" onclick="toggleSettings()">
+    <span>⚙️ Настройки</span>
+    <span class="arrow">▾</span>
+  </div>
+  <div class="settings-body card" id="settingsBody">
+    <div class="settings-row">
+      <label>Параллелизм</label>
+      <select class="sel-inp" id="setConcurrency" style="max-width:120px;padding:8px 12px;font-size:12px">
+        <option value="1">1 поток</option>
+        <option value="3" selected>3 потока</option>
+        <option value="5">5 потоков</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <label>Интервал (мс)</label>
+      <input type="range" id="setInterval" min="100" max="1000" value="300" step="50" style="accent-color:var(--primary)">
+      <span id="setIntervalVal" style="font-size:12px;color:var(--sub);min-width:40px;text-align:right">300</span>
+    </div>
+    <div class="settings-row">
+      <label>Кэш перевода</label>
+      <select class="sel-inp" id="setCache" style="max-width:120px;padding:8px 12px;font-size:12px">
+        <option value="on" selected>Включён</option>
+        <option value="off">Выключен</option>
+      </select>
+    </div>
+
+    <!-- API Keys -->
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--card-border)">
+      <div style="font-size:11px;font-weight:700;color:#a5b4fc;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px">API-ключи Google Translate</div>
+      <textarea class="ta" id="apiKeysArea" style="min-height:60px;font-size:11px" placeholder="Один ключ на строку (AIzaSy...)&#10;Ключи ротируются автоматически при ошибке 429"></textarea>
+      <div class="hint">Публичные ключи уже встроены. Добавьте свои для стабильности.</div>
+    </div>
+
+    <!-- Proxy -->
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--card-border)">
+      <div style="font-size:11px;font-weight:700;color:#a5b4fc;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px">Прокси</div>
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <select class="sel-inp" id="proxyType" style="max-width:100px;padding:8px 12px;font-size:12px">
+          <option value="" selected>Без прокси</option>
+          <option value="http">HTTP</option>
+          <option value="socks5">SOCKS5</option>
+        </select>
+        <input class="inp" id="proxyHost" placeholder="Хост" style="font-size:12px;padding:8px 12px">
+        <input class="inp" id="proxyPort" placeholder="Порт" type="number" style="max-width:70px;font-size:12px;padding:8px 12px">
+      </div>
+      <div class="hint">Для обхода блокировок Google Translate в некоторых регионах.</div>
+    </div>
+
+    <!-- Gemini Key -->
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--card-border)">
+      <div style="font-size:11px;font-weight:700;color:#a5b4fc;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px">Gemini API ключ</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input class="inp" id="geminiKeyInput" placeholder="AIzaSy..." style="font-size:12px;padding:8px 12px;flex:1">
+        <button class="btn-dl" onclick="doGeminiAuth()" style="font-size:11px;padding:8px 12px;white-space:nowrap">🔑 Получить</button>
+      </div>
+      <div class="hint">Для AI-перевода через Gemini. Нажмите "Получить" для авто-извлечения ключа.</div>
+    </div>
+  </div>
+
   <!-- TRANSLATE BUTTON -->
   <button class="btn-tr" id="btnTranslate" onclick="startTranslation()" disabled>
     ✨ Перевести книгу
@@ -303,6 +363,11 @@ select.sel-inp {
   <!-- STOP BUTTON -->
   <button class="btn-tr" id="btnStop" onclick="stopTranslation()" style="display:none;background:linear-gradient(135deg,#ef4444,#dc2626)">
     ⏹ Остановить перевод
+  </button>
+
+  <!-- CLEAR BUTTON -->
+  <button class="btn-tr" id="btnClear" onclick="clearAll()" style="display:none;background:linear-gradient(135deg,#64748b,#475569);margin-top:8px">
+    🗑 Очистить всё
   </button>
 
   <!-- RESULT -->
@@ -325,20 +390,36 @@ select.sel-inp {
 //  STATE
 // ═══════════════════════════════════════
 const S = {
-  engine: 'gemini',
-  langPair: 'ru|en',
+  engine: 'google_auto',
+  langPair: 'en|ru',
   blocks: [],
   bookMeta: {},
   fb2Doc: null,
   epubData: null,
   glossary: [],
+  glossaryMap: [],
   googlePaKey: null,
-  geminiKey: null,
-  customUrl: null,
-  customKey: null,
-  customModel: null,
-  translationAborted: false
+  translationAborted: false,
+  currentEndpointIdx: 0,
+  endpointFailures: { google_pa: 0, google_old: 0, google_html: 0 },
+  adaptiveInterval: 300,
+  cacheHits: 0,
+  cacheMisses: 0,
+  // API key rotation
+  apiKeys: [],
+  currentKeyIdx: 0,
+  badKeys: new Set(),
+  // Proxy
+  proxyType: '',
+  proxyHost: '',
+  proxyPort: 0,
+  // Gemini
+  geminiKey: '',
+  geminiModel: 'gemini-2.5-flash',
+  geminiTemperature: 0.9
 };
+
+const GOOGLE_ENDPOINTS = ['google_old', 'google_pa'];
 
 const LANG_NAMES = {
   ru: 'Russian', en: 'English', fr: 'French', de: 'German',
@@ -353,8 +434,6 @@ function selEng(e) {
   S.engine = e;
   document.querySelectorAll('.eng-card').forEach(c => c.classList.remove('sel'));
   document.getElementById('eng-' + e).classList.add('sel');
-  document.getElementById('geminiSettings').style.display = (e === 'gemini') ? 'block' : 'none';
-  document.getElementById('customSettings').style.display = (e === 'custom') ? 'block' : 'none';
 }
 
 // Перехват JS-ошибок для отладки в Android
@@ -366,10 +445,10 @@ window.onerror = function(msg, src, line, col, err) {
 // Навешиваем клики через addEventListener (надёжно в Android WebView)
 document.addEventListener('DOMContentLoaded', function() {
   var engMap = {
-    'eng-gemini':    'gemini',
+    'eng-google_auto': 'google_auto',
+    'eng-google_old': 'google_old',
     'eng-google_pa': 'google_pa',
-    'eng-edge':      'edge',
-    'eng-custom':    'custom'
+    'eng-gemini': 'gemini'
   };
   Object.keys(engMap).forEach(function(id) {
     var el = document.getElementById(id);
@@ -385,6 +464,16 @@ document.addEventListener('DOMContentLoaded', function() {
       }, { passive: false });
     }
   });
+
+  // Settings: interval slider
+  var slider = document.getElementById('setInterval');
+  var sliderVal = document.getElementById('setIntervalVal');
+  if (slider) {
+    slider.addEventListener('input', function() { sliderVal.textContent = this.value; });
+  }
+
+  // Load settings from localStorage
+  loadSettings();
 });
 
 // ═══════════════════════════════════════
@@ -419,6 +508,7 @@ async function loadFile(file) {
     }
     updateFileInfo();
     document.getElementById('btnTranslate').disabled = false;
+    document.getElementById('btnClear').style.display = 'block';
     showStatus('✅ Файл загружен: ' + file.name, 'ok');
   } catch(e) {
     showStatus('❌ Ошибка загрузки: ' + e.message, 'err');
@@ -474,8 +564,7 @@ async function parseFB2Text(text, filename) {
 }
 
 function collectTextNodes(el, blocks) {
-  // Рекурсивно обходим DOM, собираем текстовые узлы из <p>, <title>, <subtitle>, <v>
-  const textTags = new Set(['p', 'title', 'subtitle', 'v', 'text-author', 'epigraph']);
+  const textTags = new Set(['p', 'title', 'subtitle', 'v', 'text-author', 'epigraph', 'li', 'blockquote', 'dt', 'dd']);
   for (const child of el.children) {
     const tag = child.tagName.toLowerCase();
     if (textTags.has(tag)) {
@@ -586,7 +675,7 @@ async function loadEPUB(buf) {
     const html = await f.async('text');
     const chDoc = new DOMParser().parseFromString(html, 'application/xhtml+xml');
     docs[fullPath] = chDoc;
-    const textEls = chDoc.querySelectorAll('p, h1, h2, h3, h4, h5, h6');
+    const textEls = chDoc.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, figcaption, dt, dd, span[lang]');
     for (const el of textEls) {
       const txt = el.textContent.trim();
       if (txt.length > 0) {
@@ -671,7 +760,153 @@ function hideProgress() {
 }
 
 // ═══════════════════════════════════════
-//  GLOSSARY PARSE
+//  SETTINGS
+// ═══════════════════════════════════════
+function toggleSettings() {
+  var body = document.getElementById('settingsBody');
+  var toggle = document.getElementById('settingsToggle');
+  body.classList.toggle('show');
+  toggle.classList.toggle('open');
+}
+
+function loadSettings() {
+  try {
+    var c = localStorage.getItem('tr_concurrency');
+    var i = localStorage.getItem('tr_interval');
+    var ca = localStorage.getItem('tr_cache');
+    var e = localStorage.getItem('tr_engine');
+    if (c) document.getElementById('setConcurrency').value = c;
+    if (i) { document.getElementById('setInterval').value = i; document.getElementById('setIntervalVal').textContent = i; }
+    if (ca) document.getElementById('setCache').value = ca;
+    if (e) selEng(e);
+
+    // Load API keys
+    var keys = localStorage.getItem('tr_api_keys');
+    if (keys) {
+      S.apiKeys = keys.split('\n').filter(k => k.trim());
+      document.getElementById('apiKeysArea').value = keys;
+    }
+
+    // Load proxy settings
+    var pt = localStorage.getItem('tr_proxy_type');
+    var ph = localStorage.getItem('tr_proxy_host');
+    var pp = localStorage.getItem('tr_proxy_port');
+    if (pt) document.getElementById('proxyType').value = pt;
+    if (ph) document.getElementById('proxyHost').value = ph;
+    if (pp) document.getElementById('proxyPort').value = pp;
+
+    // Load Gemini key
+    var gk = localStorage.getItem('tr_gemini_key');
+    if (gk) {
+      S.geminiKey = gk;
+      document.getElementById('geminiKeyInput').value = gk;
+    }
+  } catch(e) {}
+}
+
+function saveSettings() {
+  try {
+    localStorage.setItem('tr_concurrency', document.getElementById('setConcurrency').value);
+    localStorage.setItem('tr_interval', document.getElementById('setInterval').value);
+    localStorage.setItem('tr_cache', document.getElementById('setCache').value);
+    localStorage.setItem('tr_engine', S.engine);
+
+    // Save API keys
+    var keysText = document.getElementById('apiKeysArea').value.trim();
+    localStorage.setItem('tr_api_keys', keysText);
+    S.apiKeys = keysText.split('\n').filter(k => k.trim());
+
+    // Save proxy settings
+    localStorage.setItem('tr_proxy_type', document.getElementById('proxyType').value);
+    localStorage.setItem('tr_proxy_host', document.getElementById('proxyHost').value);
+    localStorage.setItem('tr_proxy_port', document.getElementById('proxyPort').value);
+
+    // Save Gemini key
+    var geminiKey = document.getElementById('geminiKeyInput').value.trim();
+    localStorage.setItem('tr_gemini_key', geminiKey);
+    S.geminiKey = geminiKey;
+  } catch(e) {}
+}
+
+function getSettings() {
+  return {
+    concurrency: parseInt(document.getElementById('setConcurrency').value) || 3,
+    interval: parseInt(document.getElementById('setInterval').value) || 300,
+    cacheEnabled: document.getElementById('setCache').value === 'on',
+    proxyType: document.getElementById('proxyType').value,
+    proxyHost: document.getElementById('proxyHost').value,
+    proxyPort: parseInt(document.getElementById('proxyPort').value) || 0
+  };
+}
+
+// ═══════════════════════════════════════
+//  TRANSLATION CACHE (IndexedDB)
+// ═══════════════════════════════════════
+const CacheDB = {
+  db: null,
+  DB_NAME: 'BookstoreTranslationCache',
+  STORE_NAME: 'translations',
+  DB_VERSION: 1,
+
+  async init() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+      req.onupgradeneeded = function(e) {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(CacheDB.STORE_NAME)) {
+          const store = db.createObjectStore(CacheDB.STORE_NAME, { keyPath: 'key' });
+          store.createIndex('timestamp', 'timestamp', { unique: false });
+        }
+      };
+      req.onsuccess = function(e) { CacheDB.db = e.target.result; resolve(); };
+      req.onerror = function() { resolve(); };
+    });
+  },
+
+  async get(text, srcLang, dstLang) {
+    if (!this.db) return null;
+    return new Promise((resolve) => {
+      const key = srcLang + '|' + dstLang + '|' + simpleHash(text);
+      const tx = this.db.transaction(this.STORE_NAME, 'readonly');
+      const req = tx.objectStore(this.STORE_NAME).get(key);
+      req.onsuccess = function() { resolve(req.result ? req.result.translation : null); };
+      req.onerror = function() { resolve(null); };
+    });
+  },
+
+  async put(text, srcLang, dstLang, translation) {
+    if (!this.db) return;
+    return new Promise((resolve) => {
+      const key = srcLang + '|' + dstLang + '|' + simpleHash(text);
+      const tx = this.db.transaction(this.STORE_NAME, 'readwrite');
+      tx.objectStore(this.STORE_NAME).put({ key, translation, timestamp: Date.now() });
+      tx.oncomplete = function() { resolve(); };
+      tx.onerror = function() { resolve(); };
+    });
+  },
+
+  async clear() {
+    if (!this.db) return;
+    return new Promise((resolve) => {
+      const tx = this.db.transaction(this.STORE_NAME, 'readwrite');
+      tx.objectStore(this.STORE_NAME).clear();
+      tx.oncomplete = function() { resolve(); };
+      tx.onerror = function() { resolve(); };
+    });
+  }
+};
+
+function simpleHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash.toString(36);
+}
+
+// ═══════════════════════════════════════
+//  GLOSSARY (placeholder approach)
 // ═══════════════════════════════════════
 function parseGlossary() {
   const raw = document.getElementById('glossaryArea').value.trim();
@@ -680,10 +915,34 @@ function parseGlossary() {
     if (parts.length >= 2) return { from: parts[0].trim(), to: parts[1].trim() };
     return null;
   }).filter(Boolean);
+  // Build placeholder map
+  S.glossaryMap = S.glossary.map((g, i) => ({
+    placeholder: '{{g' + String(i).padStart(6, '0') + '}}',
+    from: g.from,
+    to: g.to
+  }));
+}
+
+function applyGlossary(text) {
+  if (!S.glossaryMap.length) return text;
+  let result = text;
+  for (const g of S.glossaryMap) {
+    result = result.split(g.from).join(g.placeholder);
+  }
+  return result;
+}
+
+function restoreGlossary(text) {
+  if (!S.glossaryMap.length) return text;
+  let result = text;
+  for (const g of S.glossaryMap) {
+    result = result.split(g.placeholder).join(g.to);
+  }
+  return result;
 }
 
 // ═══════════════════════════════════════
-//  TRANSLATION CORE
+//  TRANSLATION CORE (parallel pool)
 // ═══════════════════════════════════════
 function stopTranslation() {
   S.translationAborted = true;
@@ -691,70 +950,140 @@ function stopTranslation() {
   document.getElementById('btnStop').style.display = 'none';
   document.getElementById('btnTranslate').style.display = 'block';
   document.getElementById('btnTranslate').disabled = false;
+  document.getElementById('btnClear').style.display = 'block';
   hideProgress();
+  if (window.AndroidBridge && AndroidBridge.setKeepScreenOn) AndroidBridge.setKeepScreenOn(false);
+}
+
+function clearAll() {
+  S.blocks = [];
+  S.fb2Doc = null;
+  S.epubData = null;
+  S.bookMeta = {};
+  S.translationAborted = false;
+  S.cacheHits = 0;
+  S.cacheMisses = 0;
+  S.endpointFailures = { google_pa: 0, google_old: 0, google_html: 0 };
+  S.badKeys = new Set();
+
+  document.getElementById('fileIn').value = '';
+  document.getElementById('uploadCard').style.display = '';
+  document.getElementById('fileInfo').style.display = 'none';
+  document.getElementById('resCard').classList.remove('show');
+  document.getElementById('resText').value = '';
+  document.getElementById('btnTranslate').disabled = true;
+  document.getElementById('btnTranslate').style.display = 'block';
+  document.getElementById('btnStop').style.display = 'none';
+  document.getElementById('btnClear').style.display = 'none';
+  document.getElementById('glossaryArea').value = '';
+  hideProgress();
+  saveSettings();
+  showStatus('🗑 Всё очищено', 'info');
 }
 
 async function startTranslation() {
   parseGlossary();
+  saveSettings();
   S.langPair = document.getElementById('langPair').value;
-  S.geminiKey = document.getElementById('geminiKey').value.trim() || null;
   S.googlePaKey = null;
-  S.customUrl = document.getElementById('customUrl')?.value.trim() || null;
-  S.customKey = document.getElementById('customKey')?.value.trim() || null;
-  S.customModel = document.getElementById('customModel')?.value.trim() || null;
 
-  if (S.engine === 'gemini' && !S.geminiKey) {
-    showStatus('❌ Введите Gemini API Key', 'err'); return;
-  }
   if (!S.blocks.length) {
     showStatus('❌ Нет блоков для перевода', 'err'); return;
   }
 
+  const settings = getSettings();
+  S.adaptiveInterval = settings.interval;
+  S.proxyType = settings.proxyType;
+  S.proxyHost = settings.proxyHost;
+  S.proxyPort = settings.proxyPort;
+
   S.translationAborted = false;
-  trLog('Старт перевода: движок=' + S.engine + ', блоков=' + textBlocks.length + ', язык=' + S.langPair);
+  S.cacheHits = 0;
+  S.cacheMisses = 0;
+  S.endpointFailures = { google_pa: 0, google_old: 0, google_html: 0 };
+  S.badKeys = new Set();
   document.getElementById('btnTranslate').style.display = 'none';
   document.getElementById('btnStop').style.display = 'block';
   setProgress(0, 'Начало перевода...');
+  if (window.AndroidBridge && AndroidBridge.setKeepScreenOn) AndroidBridge.setKeepScreenOn(true);
+
+  // Init cache
+  if (settings.cacheEnabled) await CacheDB.init();
 
   const textBlocks = S.blocks.filter(b => b.type === 'text');
-  let done = 0;
+  trLog('Старт перевода: движок=' + S.engine + ', блоков=' + textBlocks.length + ', язык=' + S.langPair + ', параллелизм=' + settings.concurrency);
+
+  // Check cache for all blocks first
+  if (settings.cacheEnabled) {
+    for (const blk of textBlocks) {
+      const cached = await CacheDB.get(blk.original, S.langPair.split('|')[0], S.langPair.split('|')[1]);
+      if (cached) {
+        blk.translated = cached;
+        S.cacheHits++;
+      }
+    }
+  }
+
+  const toTranslate = textBlocks.filter(b => !b.translated);
+  S.cacheMisses = toTranslate.length;
+
+  if (S.cacheHits > 0) {
+    trLog('Кэш: ' + S.cacheHits + ' блоков из кэша, ' + S.cacheMisses + ' на перевод');
+  }
+
+  // Parallel translation pool
+  let done = S.cacheHits;
   let totalErrors = 0;
+  const total = textBlocks.length;
 
-  const BATCH = 20;
-  for (let i = 0; i < textBlocks.length; i += BATCH) {
-    if (S.translationAborted) {
-      showStatus('⏹ Перевод остановлен. Переведено: ' + done + '/' + textBlocks.length, 'info');
-      break;
-    }
+  if (toTranslate.length > 0) {
+    const queue = [...toTranslate];
+    const workers = Math.min(settings.concurrency, queue.length);
 
-    const batch = textBlocks.slice(i, i + BATCH);
-    const combined = batch.map(b => b.original).join('\n◆◆◆◆\n');
-    try {
-      const translated = await translateWithRetry(combined, 2);
-      const parts = translated.split(/\n?◆◆◆◆\n?/);
-      for (let j = 0; j < batch.length; j++) {
-        batch[j].translated = (parts[j] || batch[j].original).trim();
-      }
-    } catch(e) {
-      for (const blk of batch) {
-        if (S.translationAborted) break;
-        try {
-          blk.translated = await translateWithRetry(blk.original, 2);
-        } catch(e2) {
-          blk.translated = blk.original;
-          totalErrors++;
+    const workerPromises = [];
+    for (let w = 0; w < workers; w++) {
+      workerPromises.push((async () => {
+        while (queue.length > 0) {
+          if (S.translationAborted) break;
+          const blk = queue.shift();
+          if (!blk) break;
+
+          const startTime = Date.now();
+          try {
+            blk.translated = await translateWithEndpointFallback(blk.original);
+            if (settings.cacheEnabled && blk.translated) {
+              CacheDB.put(blk.original, S.langPair.split('|')[0], S.langPair.split('|')[1], blk.translated);
+            }
+            // Adaptive rate limiting
+            const elapsed = Date.now() - startTime;
+            if (elapsed > 1000) S.adaptiveInterval = Math.min(S.adaptiveInterval + 100, 1000);
+            else if (elapsed < 200 && S.adaptiveInterval > 100) S.adaptiveInterval = Math.max(S.adaptiveInterval - 50, 100);
+          } catch(e) {
+            blk.translated = blk.original;
+            totalErrors++;
+            const errMsg = e.message || String(e);
+            // Log detailed error for debugging
+            if (errMsg.includes('429')) {
+              trLog('BLOCK ERROR: Rate limit (429) - все ключи исчерпаны');
+            } else if (errMsg.includes('403')) {
+              trLog('BLOCK ERROR: Forbidden (403) - ключ заблокирован');
+            } else if (errMsg.includes('401')) {
+              trLog('BLOCK ERROR: Unauthorized (401) - невалидный ключ');
+            } else if (errMsg.includes('Сеть:') || errMsg.includes('fetch')) {
+              trLog('BLOCK ERROR: Network error - проверьте подключение/прокси');
+            } else {
+              trLog('BLOCK ERROR: ' + errMsg);
+            }
+          }
+          done++;
+          setProgress(Math.round(done / total * 100), `Переведено: ${done}/${total}` + (S.cacheHits > 0 ? ' (кэш: ' + S.cacheHits + ')' : ''));
+          await sleep(S.adaptiveInterval);
         }
-        done++;
-        setProgress(Math.round(done / textBlocks.length * 100), `Переведено: ${done}/${textBlocks.length}`);
-        await sleep(100);
-      }
-      done += batch.length;
-      setProgress(Math.round(done / textBlocks.length * 100), `Переведено: ${done}/${textBlocks.length}`);
-      continue;
+      })());
     }
-    done += batch.length;
-    setProgress(Math.round(done / textBlocks.length * 100), `Переведено: ${done}/${textBlocks.length}`);
-    await sleep(150);
+    await Promise.all(workerPromises);
+  } else {
+    setProgress(100, `Все ${total} блоков взяты из кэша`);
   }
 
   const resultText = textBlocks.map(b => b.translated || b.original).join('\n\n');
@@ -764,17 +1093,26 @@ async function startTranslation() {
   document.getElementById('btnStop').style.display = 'none';
   document.getElementById('btnTranslate').style.display = 'block';
   document.getElementById('btnTranslate').disabled = false;
+  document.getElementById('btnClear').style.display = 'block';
+  if (window.AndroidBridge && AndroidBridge.setKeepScreenOn) AndroidBridge.setKeepScreenOn(false);
 
   if (!S.translationAborted) {
+    const cacheInfo = S.cacheHits > 0 ? ' (из кэша: ' + S.cacheHits + ')' : '';
     if (totalErrors > 0) {
-      showStatus('⚠️ Перевод завершён с ошибками: ' + totalErrors + ' блоков не переведены. Проверьте VPN или смените движок.', 'err');
+      let hint = '';
+      if (S.badKeys.size > 0) {
+        hint = ' Исчерпанные ключи: ' + S.badKeys.size + '. Добавьте новые ключи в настройках.';
+      }
+      const proxyHint = (S.proxyType && S.proxyHost) ? '' : ' Включите прокси в настройках для обхода блокировок.';
+      showStatus('⚠️ Перевод завершён с ошибками: ' + totalErrors + ' блоков.' + hint + proxyHint + cacheInfo, 'err');
     } else {
-      showStatus('✅ Перевод завершён! Блоков: ' + textBlocks.length, 'ok');
+      showStatus('✅ Перевод завершён! Блоков: ' + total + cacheInfo, 'ok');
     }
+    notifyComplete(totalErrors);
   }
 }
 
-// Retry-обёртка
+// Retry-обёртка с экспоненциальной задержкой
 async function translateWithRetry(text, retries) {
   let lastErr = null;
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -782,27 +1120,78 @@ async function translateWithRetry(text, retries) {
       return await translateBlock(text);
     } catch(e) {
       lastErr = e;
-      if (attempt < retries) await sleep(1500 * (attempt + 1));
+      if (attempt < retries) {
+        const delay = Math.min(1500 * Math.pow(2, attempt), 10000);
+        trLog('Retry ' + (attempt + 1) + '/' + retries + ' через ' + delay + 'мс: ' + e.message);
+        await sleep(delay);
+      }
     }
   }
   throw lastErr;
 }
 
+// Endpoint fallback for google_auto mode
+async function translateWithEndpointFallback(text) {
+  if (S.engine !== 'google_auto') {
+    return await translateWithRetry(text, 2);
+  }
+
+  const order = [...GOOGLE_ENDPOINTS];
+  // Rotate: start from current endpoint
+  const startIdx = S.currentEndpointIdx % order.length;
+  const ordered = [...order.slice(startIdx), ...order.slice(0, startIdx)];
+
+  let lastErr = null;
+  for (const ep of ordered) {
+    if (S.translationAborted) throw new Error('Aborted');
+    if (S.endpointFailures[ep] > 5) continue; // skip hot endpoints
+    try {
+      const result = await _translateViaEndpoint(text, ep);
+      S.currentEndpointIdx = (GOOGLE_ENDPOINTS.indexOf(ep) + 1) % GOOGLE_ENDPOINTS.length;
+      S.endpointFailures[ep] = Math.max(0, S.endpointFailures[ep] - 1);
+      return result;
+    } catch(e) {
+      lastErr = e;
+      S.endpointFailures[ep]++;
+      trLog('Auto: эндпоинт ' + ep + ' ошибка (' + S.endpointFailures[ep] + '): ' + e.message);
+      if (e.message.includes('429') || e.message.includes('403')) {
+        await sleep(3000); // back off on rate limit
+      }
+    }
+  }
+
+  // If all Google endpoints failed and Gemini key is available, try Gemini
+  if (S.geminiKey) {
+    try {
+      trLog('Auto: все Google эндпоинты исчерпаны, пробуем Gemini');
+      return await _trGemini(text, ...S.langPair.split('|'));
+    } catch(e) {
+      trLog('Auto: Gemini тоже ошибка: ' + e.message);
+    }
+  }
+
+  throw lastErr || new Error('All endpoints failed');
+}
+
+async function _translateViaEndpoint(text, endpoint) {
+  const [src, dst] = S.langPair.split('|');
+  switch(endpoint) {
+    case 'google_pa': return await _trGooglePA(text, src, dst);
+    case 'google_old': return await _trGoogleOld(text, src, dst);
+    case 'google_html': return await _trGoogleHtml(text, src, dst);
+    default: return text;
+  }
+}
+
 async function translateBlock(text) {
   if (!text) return '';
-  try {
-    switch(S.engine) {
-      case 'gemini': return await trGemini(text);
-      case 'google_pa': return await trGooglePA(text);
-      case 'edge': return await trEdge(text);
-      case 'custom': return await trCustom(text);
-      default: return text;
-    }
-  } catch(e) {
-    if (S.engine === 'google_pa') {
-      try { return await trEdge(text); } catch(e2) { throw e; }
-    }
-    throw e;
+  switch(S.engine) {
+    case 'google_auto': return await translateWithEndpointFallback(text);
+    case 'google_pa': return await _trGooglePA(text, ...S.langPair.split('|'));
+    case 'google_old': return await _trGoogleOld(text, ...S.langPair.split('|'));
+    case 'google_html': return await _trGoogleHtml(text, ...S.langPair.split('|'));
+    case 'gemini': return await _trGemini(text, ...S.langPair.split('|'));
+    default: return text;
   }
 }
 
@@ -810,119 +1199,202 @@ async function translateBlock(text) {
 //  ENGINES
 // ═══════════════════════════════════════
 
-// ── GEMINI ──
-async function trGemini(text) {
-  const key = S.geminiKey;
-  if (!key) throw new Error('Gemini API Key не задан');
-  const [src, dst] = S.langPair.split('|');
-  const prompt = getSystemPrompt(LANG_NAMES, dst, false, src) + text;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
-  const body = JSON.stringify({
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
-  });
-  return new Promise((resolve, reject) => {
-    callNative(url, 'POST', body, {'Content-Type': 'application/json'}, (res, err) => {
-      if (err) return reject(new Error(err));
-      try {
-        const data = JSON.parse(res);
-        const out = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (out) resolve(out.trim());
-        else throw new Error('Пустой ответ Gemini');
-      } catch(e) { reject(e); }
-    });
-  });
-}
+// ── GOOGLE PA — translate-pa.googleapis.com/v1/translate ──
+async function _trGooglePA(text, src, dst) {
+  const effectiveSrc = (!src || src === 'auto') ? 'auto' : src;
 
-// ── GOOGLE PA (Calibre) — translate-pa.googleapis.com ──
-async function trGooglePA(text) {
-  const [src, dst] = S.langPair.split('|');
-  let apiKey = S.googlePaKey;
-  if (!apiKey && window.AndroidBridge && AndroidBridge.getSetting) {
-    try { apiKey = AndroidBridge.getSetting('google_pa_key', ''); } catch(e) {}
+  if (text.length <= 1800) {
+    return await _googlePARequest(text, effectiveSrc, dst);
   }
-  if (!apiKey) apiKey = 'AIzaSyDLEeFI5OtFBwYBIoK_jj5m32rZK5CkCXA';
-
-  const MAX_LEN = 1800;
-  if (text.length <= MAX_LEN) {
-    return await _googlePARequest(text, src, dst, apiKey);
-  }
-
-  const SEP = '\n◆◆◆◆\n';
-  if (text.includes('◆◆◆◆')) {
-    const parts = text.split(/\n?◆◆◆◆\n?/);
-    const results = [];
-    for (const part of parts) {
-      if (!part.trim()) { results.push(''); continue; }
-      if (part.length <= MAX_LEN) {
-        results.push(await _googlePARequest(part, src, dst, apiKey));
-      } else {
-        const chunks = splitBySentences(part, MAX_LEN);
-        const chunkResults = [];
-        for (const chunk of chunks) {
-          chunkResults.push(await _googlePARequest(chunk, src, dst, apiKey));
-          await sleep(100);
-        }
-        results.push(chunkResults.join(''));
-      }
-      await sleep(100);
-    }
-    return results.join(SEP);
-  }
-
-  const chunks = splitBySentences(text, MAX_LEN);
+  const chunks = splitBySentences(text, 1800);
   const results = [];
   for (const chunk of chunks) {
-    results.push(await _googlePARequest(chunk, src, dst, apiKey));
-    await sleep(100);
+    results.push(await _googlePARequest(chunk, effectiveSrc, dst));
+    await sleep(50);
   }
   return results.join('');
 }
 
-async function _googlePARequest(text, src, dst, apiKey) {
+async function _googlePARequest(text, src, dst) {
   if (!text || !text.trim()) return text;
+
+  // Build key list: user keys first, then fallback
+  const fallbackKey = 'AIzaSyDLEeFI5OtFBwYBIoK_jj5m32rZK5CkCXA';
+  const allKeys = [...S.apiKeys, fallbackKey].filter(k => k && !S.badKeys.has(k));
+
+  let lastErr = null;
+  for (let ki = 0; ki < allKeys.length; ki++) {
+    const key = allKeys[ki];
+    const params = new URLSearchParams({
+      'params.client': 'gtx',
+      'query.source_language': src,
+      'query.target_language': dst,
+      'query.display_language': 'en-US',
+      'data_types': 'TRANSLATION',
+      'key': key,
+      'query.text': text
+    });
+    const url = 'https://translate-pa.googleapis.com/v1/translate?' + params.toString();
+    trLog('Google PA: ' + text.length + ' символов, ' + src + '→' + dst + ', key_idx=' + ki);
+    const headers = {
+      'Accept': '*/*',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
+    };
+
+    try {
+      const result = await new Promise((resolve, reject) => {
+        callNative(url, 'GET', '', headers, (res, err) => {
+          if (err) return reject(new Error('Сеть: ' + err));
+          if (!res) return reject(new Error('Пустой ответ от Google PA'));
+          try {
+            const data = JSON.parse(res);
+            if (data.translation) { resolve(data.translation); return; }
+            if (Array.isArray(data) && data[0]) {
+              let el = data[0];
+              while (Array.isArray(el) && el.length > 0) el = el[0];
+              if (typeof el === 'string') { resolve(el); return; }
+            }
+            throw new Error('Формат: ' + JSON.stringify(data).slice(0, 100));
+          } catch(e) { reject(new Error('Google PA: ' + e.message)); }
+        });
+      });
+      return result;
+    } catch(e) {
+      lastErr = e;
+      const msg = e.message || '';
+      if (msg.includes('429') || msg.includes('403') || msg.includes('API_KEY_INVALID')) {
+        S.badKeys.add(key);
+        trLog('Google PA: ключ ' + key.slice(0,10) + '... заблокирован, пробуем следующий');
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr || new Error('Все ключи Google PA исчерпаны');
+}
+
+// ── GOOGLE OLD — translate.googleapis.com/translate_a/single ──
+async function _trGoogleOld(text, src, dst) {
   const effectiveSrc = (!src || src === 'auto') ? 'auto' : src;
-  const key = apiKey || 'AIzaSyDLEeFI5OtFBwYBIoK_jj5m32rZK5CkCXA';
-  const params = new URLSearchParams({
-    'params.client': 'gtx',
-    'query.source_language': effectiveSrc,
-    'query.target_language': dst,
-    'query.display_language': 'en-US',
-    'data_types': 'TRANSLATION',
-    'key': key,
-    'query.text': text
-  });
-  const url = `https://translate-pa.googleapis.com/v1/translate?${params.toString()}`;
-  trLog('Google PA: запрос ' + text.length + ' символов, src=' + effectiveSrc + '→' + dst);
+  const params = {
+    'client': 'gtx',
+    'sl': effectiveSrc,
+    'tl': dst,
+    'dt': 't',
+    'dj': 1,
+    'q': text
+  };
+  const method = text.length <= 1800 ? 'GET' : 'POST';
+  let url = 'https://translate.googleapis.com/translate_a/single?' + new URLSearchParams(params).toString();
+  const body = method === 'POST' ? new URLSearchParams(params).toString() : '';
+  if (method === 'POST') url = 'https://translate.googleapis.com/translate_a/single';
+
+  trLog('Google Old: ' + text.length + ' символов, ' + effectiveSrc + '→' + dst + ' (' + method + ')');
   const headers = {
     'Accept': '*/*',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Accept-Language': 'en-US,en;q=0.9',
     'Content-Type': 'application/x-www-form-urlencoded',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
+    'User-Agent': 'DeepLBrowserExtension/1.3.0 Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36'
   };
   return new Promise((resolve, reject) => {
-    callNative(url, 'GET', '', headers, (res, err) => {
-      if (err) {
-        trLog('Google PA ОШИБКА СЕТИ: ' + err);
-        return reject(new Error('Сеть: ' + err));
-      }
-      if (!res) {
-        trLog('Google PA: пустой ответ');
-        return reject(new Error('Пустой ответ от Google PA'));
-      }
-      trLog('Google PA: ответ ' + res.length + ' символов: ' + res.slice(0, 120));
+    callNative(url, method, body, headers, (res, err) => {
+      if (err) return reject(new Error('Сеть: ' + err));
+      if (!res) return reject(new Error('Пустой ответ от Google Old'));
       try {
         const data = JSON.parse(res);
-        if (data.translation) {
-          resolve(data.translation);
-        } else if (data[0] && data[0][0]) {
-          resolve(data[0][0]);
-        } else {
-          throw new Error('Неожиданный формат: ' + JSON.stringify(data).slice(0, 100));
+        if (data.sentences) {
+          resolve(data.sentences.map(s => s.trans || '').join(''));
+          return;
         }
-      } catch(e) {
-        trLog('Google PA PARSE ОШИБКА: ' + e.message);
-        reject(new Error('Google PA: ' + e.message));
-      }
+        // Fallback: array format
+        if (Array.isArray(data) && Array.isArray(data[0])) {
+          resolve(data[0].map(s => s[0] || '').join(''));
+          return;
+        }
+        throw new Error('Формат: ' + JSON.stringify(data).slice(0, 100));
+      } catch(e) { reject(new Error('Google Old: ' + e.message)); }
+    });
+  });
+}
+
+// ── GOOGLE HTML — translate-pa.googleapis.com/v1/translateHtml ──
+async function _trGoogleHtml(text, src, dst) {
+  const effectiveSrc = (!src || src === 'auto') ? 'auto' : src;
+  const payload = JSON.stringify([[[text], effectiveSrc, dst], 'wt_lib']);
+  trLog('Google HTML: ' + text.length + ' символов, ' + effectiveSrc + '→' + dst);
+  const headers = {
+    'Accept': '*/*',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Content-Type': 'application/json+protobuf',
+    'X-Goog-Api-Key': 'AIzaSyATBXajvzQLTDHEQbcpq0Ihe0vWDHmO520',
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
+  };
+  return new Promise((resolve, reject) => {
+    callNative('https://translate-pa.googleapis.com/v1/translateHtml', 'POST', payload, headers, (res, err) => {
+      if (err) return reject(new Error('Сеть: ' + err));
+      if (!res) return reject(new Error('Пустой ответ от Google HTML'));
+      try {
+        const data = JSON.parse(res);
+        if (Array.isArray(data) && Array.isArray(data[0]) && data[0][0]) {
+          resolve(data[0][0]);
+          return;
+        }
+        throw new Error('Формат: ' + JSON.stringify(data).slice(0, 100));
+      } catch(e) { reject(new Error('Google HTML: ' + e.message)); }
+    });
+  });
+}
+
+// ── GEMINI — Google Gemini AI ──
+async function _trGemini(text, src, dst) {
+  const apiKey = S.geminiKey;
+  if (!apiKey) throw new Error('Gemini API ключ не задан. Получите его в настройках.');
+
+  const target = LANG_NAMES[dst] || dst;
+  const source = (src && src !== 'auto') ? (LANG_NAMES[src] || src) : 'detected language';
+  const prompt = `You are an expert literary translator. Translate the following content from ${source} into ${target} only. Maintain the original tone, style, and emotional nuance. Do not explain terms, do not add notes, and do not add any prefix or suffix. Preserve formatting and line breaks exactly.\n\n${text}`;
+
+  const model = S.geminiModel || 'gemini-2.5-flash';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const payload = JSON.stringify({
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: S.geminiTemperature || 0.9,
+      topP: 1.0,
+      topK: 1
+    },
+    safetySettings: [
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+    ]
+  });
+
+  const headers = { 'Content-Type': 'application/json' };
+
+  trLog('Gemini: ' + text.length + ' символов, ' + source + '→' + target);
+
+  return new Promise((resolve, reject) => {
+    callNative(url, 'POST', payload, headers, (res, err) => {
+      if (err) return reject(new Error('Сеть: ' + err));
+      if (!res) return reject(new Error('Пустой ответ от Gemini'));
+      try {
+        const data = JSON.parse(res);
+        if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+        const parts = data.candidates?.[0]?.content?.parts;
+        if (parts && parts.length > 0) {
+          resolve(parts.map(p => p.text || '').join(''));
+          return;
+        }
+        throw new Error('Формат: ' + JSON.stringify(data).slice(0, 100));
+      } catch(e) { reject(new Error('Gemini: ' + e.message)); }
     });
   });
 }
@@ -931,8 +1403,9 @@ async function _googlePARequest(text, src, dst, apiKey) {
 function splitBySentences(text, maxLen) {
   if (text.length <= maxLen) return [text];
   const chunks = [];
-  // Сначала пробуем разбить по концам предложений
-  const sentences = text.match(/[^.!?]+[.!?]+\s*/g) || [text];
+  // Разбиваем по предложениям, не теряя хвост без пунктуации
+  const sentences = text.match(/[^.!?]+[.!?]+\s*/g);
+  if (!sentences) return [text.slice(0, maxLen)];
   let cur = '';
   for (const s of sentences) {
     if ((cur + s).length <= maxLen) {
@@ -942,81 +1415,23 @@ function splitBySentences(text, maxLen) {
       cur = s.length > maxLen ? s.slice(0, maxLen) : s;
     }
   }
+  // Добавляем остаток текста после последнего предложения с пунктуацией
+  const consumed = sentences.join('');
+  const tail = text.slice(consumed.length);
+  if (tail.trim()) {
+    if ((cur + tail).length <= maxLen) {
+      cur += tail;
+    } else {
+      if (cur.trim()) chunks.push(cur.trim());
+      cur = tail;
+    }
+  }
   if (cur.trim()) chunks.push(cur.trim());
   return chunks.length ? chunks : [text.slice(0, maxLen)];
 }
 
-// ── MICROSOFT EDGE (Free) ──
-async function trEdge(text) {
-  if (!window._edgeToken || Date.now() > window._edgeTokenExp) {
-    const authUrl = 'https://edge.microsoft.com/translate/auth';
-    const res = await new Promise((resolve, reject) => {
-      callNative(authUrl, 'GET', '', {}, (res, err) => err ? reject(new Error('Edge auth failed: ' + err)) : resolve(res));
-    });
-    if (!res || !res.includes('.')) throw new Error('Edge: невалидный токен');
-    const parts = res.split('.');
-    if (parts.length > 1) {
-      const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-      window._edgeToken = res;
-      window._edgeTokenExp = (payload.exp * 1000) - 60000;
-    } else {
-      throw new Error('Edge: не удалось получить токен авторизации');
-    }
-  }
-  const [src, dst] = S.langPair.split('|');
-  const url = `https://api.cognitive.microsofttranslator.com/translate?to=${dst}&api-version=3.0&includeSentenceLength=true`;
-  const body = JSON.stringify([{text: text}]);
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer ' + window._edgeToken,
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edge/133.0.0.0'
-  };
-  return new Promise((resolve, reject) => {
-    callNative(url, 'POST', body, headers, (res, err) => {
-      if (err) return reject(new Error('Edge translate: ' + err));
-      if (!res) return reject(new Error('Edge: пустой ответ'));
-      try {
-        const data = JSON.parse(res);
-        if (data[0] && data[0].translations && data[0].translations[0]) {
-          resolve(data[0].translations[0].text.trim());
-        } else {
-          throw new Error('Формат: ' + JSON.stringify(data).slice(0, 100));
-        }
-      } catch(e) { reject(new Error('Edge: ' + e.message)); }
-    });
-  });
-}
-
-// ── CUSTOM AI ──
-async function trCustom(text) {
-  const url = S.customUrl;
-  const key = S.customKey;
-  const model = S.customModel || 'gpt-4o';
-  if (!url) throw new Error('Custom AI URL не задан');
-  const [src, dst] = S.langPair.split('|');
-  const sysPrompt = getSystemPrompt(LANG_NAMES, dst, false, src);
-  const body = JSON.stringify({
-    model,
-    messages: [
-      { role: 'system', content: sysPrompt },
-      { role: 'user', content: text }
-    ],
-    temperature: 0.3
-  });
-  const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key };
-  return new Promise((resolve, reject) => {
-    callNative(url, 'POST', body, headers, (res, err) => {
-      if (err) return reject(new Error(err));
-      try {
-        const data = JSON.parse(res);
-        const out = data.choices?.[0]?.message?.content;
-        if (out) resolve(out.trim());
-        else throw new Error('Пустой ответ Custom AI');
-      } catch(e) { reject(e); }
-    });
-  });
-}
-
+// ═══════════════════════════════════════
+//  SYSTEM PROMPT
 // ═══════════════════════════════════════
 //  SYSTEM PROMPT
 // ═══════════════════════════════════════
@@ -1029,7 +1444,6 @@ For French to Russian, use appropriate polite forms (Вы) or informal forms (т
 Ensure grammatical correctness and natural flow in ${target}. 
 Do not explain terms, do not add notes, and do not add any prefix or suffix. 
 Preserve formatting and line breaks exactly.
-IMPORTANT: If the text contains ◆◆◆◆ separators, keep EXACTLY the same number of ◆◆◆◆ separators in your translation.
 CRITICAL: Any placeholders like [[TG_0]] MUST be preserved EXACTLY in the translated output and placed correctly according to the sentence structure.`;
   if (isVision) p += `\nThis is an image (scan or diagram). Extract and translate all text from it accurately.`;
   if (S.glossary && S.glossary.length > 0) {
@@ -1037,6 +1451,40 @@ CRITICAL: Any placeholders like [[TG_0]] MUST be preserved EXACTLY in the transl
   }
   return p + '\n\n';
 }
+
+// ═══════════════════════════════════════
+//  GEMINI AUTH
+// ═══════════════════════════════════════
+function doGeminiAuth() {
+  if (window.AndroidBridge && AndroidBridge.doGeminiAuth) {
+    AndroidBridge.doGeminiAuth();
+  } else {
+    showStatus('❌ Gemini авторизация доступна только в Android приложении', 'err');
+  }
+}
+
+// Called by Android when Gemini key is extracted
+window.onGeminiKeyReceived = function(key) {
+  if (key && key.startsWith('AIza')) {
+    S.geminiKey = key;
+    document.getElementById('geminiKeyInput').value = key;
+    localStorage.setItem('tr_gemini_key', key);
+    showStatus('✅ Gemini API ключ получен: ' + key.slice(0, 10) + '...', 'ok');
+    trLog('Gemini ключ получен: ' + key.slice(0, 10) + '...');
+  }
+};
+// ═══════════════════════════════════════
+//  SAFE TEXT REPLACEMENT (preserves node structure)
+// ═══════════════════════════════════════
+function safeReplaceText(node, newText) {
+  // Удаляем всех потомков
+  while (node.firstChild) {
+    node.removeChild(node.firstChild);
+  }
+  // Добавляем один текстовый узел
+  node.appendChild(node.ownerDocument.createTextNode(newText));
+}
+
 // ═══════════════════════════════════════
 //  DOWNLOAD: FB2
 // ═══════════════════════════════════════
@@ -1063,11 +1511,20 @@ async function dlFb2() {
     if (langEl) langEl.textContent = dst;
 
     // Патчим переведённые текстовые блоки в DOM
+    let patchedCount = 0;
+    let skippedCount = 0;
     for (const b of S.blocks) {
-      if (b.type === 'text' && b.translated && !b.isPdf) {
-        b.node.textContent = b.translated;
+      if (b.type === 'text' && !b.isPdf) {
+        const tr = b.translated || b.original;
+        if (tr) {
+          safeReplaceText(b.node, tr);
+          patchedCount++;
+        } else {
+          skippedCount++;
+        }
       }
     }
+    trLog('FB2 patch: ' + patchedCount + ' blocks patched, ' + skippedCount + ' skipped');
 
     // Сериализуем
     const serializer = new XMLSerializer();
@@ -1101,6 +1558,7 @@ async function dlFb2() {
     const content = await zip.generateAsync({type:'base64', compression:'DEFLATE'});
     saveFinalFile(content, baseName + '.fb2.zip', 'application/zip', true);
     showStatus('✓ FB2.ZIP сохранён (оригинальная структура + все изображения)', 'ok');
+    notifySave('fb2');
     return;
   }
 
@@ -1133,6 +1591,7 @@ ${coverBin}
   const content = await zip.generateAsync({type:'base64', compression:'DEFLATE'});
   saveFinalFile(content, baseName + '.fb2.zip', 'application/zip', true);
   showStatus('✓ FB2.ZIP сохранён', 'ok');
+  notifySave('fb2');
 }
 
 // ═══════════════════════════════════════
@@ -1153,11 +1612,20 @@ async function dlEpub() {
 
   if (S.epubData) {
     // Патчим переведённые DOM-узлы
+    let patchedCount = 0;
+    let skippedCount = 0;
     for (const b of S.blocks) {
-      if (b.type === 'text' && b.translated && !b.isPdf) {
-        b.node.textContent = b.translated;
+      if (b.type === 'text' && !b.isPdf) {
+        const tr = b.translated || b.original;
+        if (tr) {
+          safeReplaceText(b.node, tr);
+          patchedCount++;
+        } else {
+          skippedCount++;
+        }
       }
     }
+    trLog('EPUB patch: ' + patchedCount + ' blocks patched, ' + skippedCount + ' skipped');
 
     // Обновляем метаданные в OPF
     const metaTitle = S.epubData.opfDoc.querySelector('metadata title, metadata dc\\:title');
@@ -1179,6 +1647,7 @@ async function dlEpub() {
     const content = await S.epubData.zip.generateAsync({type:'base64', compression:'DEFLATE'});
     saveFinalFile(content, baseName + '.epub', 'application/epub+zip', true);
     showStatus('✓ EPUB сохранён (оригинальная структура + все изображения)', 'ok');
+    notifySave('epub');
     return;
   }
 
@@ -1220,6 +1689,7 @@ ${text.split('\n\n').filter(p=>p.trim()).map(p => `<p>${esc(p.trim())}</p>`).joi
   const content = await zip.generateAsync({type:'base64', compression:'DEFLATE'});
   saveFinalFile(content, baseName + '.epub', 'application/epub+zip', true);
   showStatus('✓ EPUB сохранён', 'ok');
+  notifySave('epub');
 }
 
 // ═══════════════════════════════════════
@@ -1244,6 +1714,7 @@ async function dlTxt() {
   const b64 = btoa(bin);
   saveFinalFile(b64, baseName + '.txt', 'text/plain', true);
   showStatus('✓ TXT сохранён', 'ok');
+  notifySave('txt');
 }
 
 // ═══════════════════════════════════════
@@ -1285,10 +1756,7 @@ function esc(s) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function trLog(msg) {
-  console.error('[TR] ' + msg);
-  if (window.AndroidBridge && AndroidBridge.showToast) {
-    AndroidBridge.showToast(msg);
-  }
+  console.log('[TR] ' + msg);
 }
 
 function transliterate(t) {
@@ -1298,6 +1766,67 @@ function transliterate(t) {
   };
   return t.split('').map(c => map[c] !== undefined ? map[c] : c).join('')
     .replace(/[^\w.\-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+}
+
+// ═══════════════════════════════════════
+//  NOTIFICATIONS
+// ═══════════════════════════════════════
+function notifyComplete(errors) {
+  // Вибрация через AndroidBridge
+  if (window.AndroidBridge && AndroidBridge.vibrate) {
+    try { AndroidBridge.vibrate(errors > 0 ? [200, 100, 200] : [300]); } catch(e) {}
+  }
+  // Звуковое уведомление через Audio API
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    if (errors > 0) {
+      // Низкий двойной тон — ошибка
+      osc.frequency.value = 440;
+      gain.gain.value = 0.15;
+      osc.start(); osc.stop(ctx.currentTime + 0.15);
+      setTimeout(() => {
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.connect(gain2); gain2.connect(ctx.destination);
+        osc2.frequency.value = 350; gain2.gain.value = 0.15;
+        osc2.start(); osc2.stop(ctx.currentTime + 0.3);
+      }, 200);
+    } else {
+      // Мажорный аккорд — успех
+      osc.frequency.value = 523.25;
+      gain.gain.value = 0.12;
+      osc.start(); osc.stop(ctx.currentTime + 0.25);
+      setTimeout(() => {
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.connect(gain2); gain2.connect(ctx.destination);
+        osc2.frequency.value = 659.25; gain2.gain.value = 0.12;
+        osc2.start(); osc2.stop(ctx.currentTime + 0.4);
+      }, 150);
+    }
+  } catch(e) {}
+}
+
+function notifySave(format) {
+  // Лёгкая вибрация при сохранении
+  if (window.AndroidBridge && AndroidBridge.vibrate) {
+    try { AndroidBridge.vibrate([100]); } catch(e) {}
+  }
+  // Короткий тон
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.value = 0.1;
+    osc.start(); osc.stop(ctx.currentTime + 0.12);
+  } catch(e) {}
 }
 
 // callNative — мост к Android (nativeRequest + callback-ID) или fetch-fallback
@@ -1323,7 +1852,22 @@ window.onNativeResponse = function(id, errB64, dataB64) {
 };
 
 function callNative(url, method, body, headers, callback) {
-  if (window.AndroidBridge && AndroidBridge.nativeRequest) {
+  if (window.AndroidBridge && AndroidBridge.nativeRequestWithProxy) {
+    const id = 'nc' + (++_nativeCbId);
+    _nativeCbs[id] = callback;
+    trLog('callNative: ' + method + ' ' + url.slice(0, 80) + '...');
+    try {
+      // Pass proxy settings if configured
+      const proxyType = S.proxyType || '';
+      const proxyHost = S.proxyHost || '';
+      const proxyPort = parseInt(S.proxyPort) || 0;
+      AndroidBridge.nativeRequestWithProxy(url, method, body || '', JSON.stringify(headers || {}), id, proxyType, proxyHost, proxyPort);
+    } catch(e) {
+      delete _nativeCbs[id];
+      trLog('callNative ОШИБКА: ' + e.message);
+      callback('', e.message);
+    }
+  } else if (window.AndroidBridge && AndroidBridge.nativeRequest) {
     const id = 'nc' + (++_nativeCbId);
     _nativeCbs[id] = callback;
     trLog('callNative: ' + method + ' ' + url.slice(0, 80) + '...');
