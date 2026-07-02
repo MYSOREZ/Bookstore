@@ -13,6 +13,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -111,7 +112,7 @@ class BookArchitectOrchestrator(private val activity: MainActivity) {
 
                 val bytes = downloadBytes(formatUrl)
                 if (bytes == null || bytes.isEmpty()) {
-                    reportError("Не удалось скачать файл (обе попытки — через DoH и напрямую — не дали годного содержимого)")
+                    reportError("Не удалось скачать файл после нескольких попыток (через DoH и напрямую)")
                     return@launch
                 }
                 AppLogger.i(TAG, "Downloaded ${bytes.size} bytes for $fileName")
@@ -248,13 +249,32 @@ class BookArchitectOrchestrator(private val activity: MainActivity) {
     }
 
     /**
+     * flibusta in particular tends to fail the very first request (500/503/reset) and then work
+     * fine on retry — so a single failed attempt isn't treated as final. Retries a few times with
+     * a short backoff before giving up.
+     */
+    private suspend fun downloadBytes(url: String): ByteArray? {
+        val maxAttempts = 3
+        repeat(maxAttempts) { attempt ->
+            val result = downloadBytesOnce(url)
+            if (result != null) return result
+            if (attempt < maxAttempts - 1) {
+                AppLogger.i(TAG, "Download attempt ${attempt + 1}/$maxAttempts failed, retrying…")
+                report(JSONObject().put("type", "retrying_download").put("attempt", attempt + 2).put("maxAttempts", maxAttempts))
+                delay(2_000L * (attempt + 1))
+            }
+        }
+        return null
+    }
+
+    /**
      * Some sources (flibusta in particular) are DNS-blocked for plain requests — search already
      * works around this via DohHttpClient's DNS-over-HTTPS resolution, so downloads need the same
      * workaround. DoH and a direct OkHttp request are raced concurrently rather than tried in
      * sequence, since which one actually works varies by source/network and sequential retries
      * cost up to a minute of dead waiting before falling back.
      */
-    private suspend fun downloadBytes(url: String): ByteArray? = coroutineScope {
+    private suspend fun downloadBytesOnce(url: String): ByteArray? = coroutineScope {
         val cookies = CookieManager.getInstance().getCookie(url)
         val cookieHeader: Map<String, String> =
             cookies?.takeIf { it.isNotEmpty() }?.let { mapOf("Cookie" to it) } ?: emptyMap()
