@@ -1,8 +1,9 @@
-name: Build and Release Android APK
+name: Build Universal APK (Actions)
 
 on:
   push:
     branches: [ "master" ]
+  workflow_dispatch:
 
 jobs:
   build:
