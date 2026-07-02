@@ -116,6 +116,17 @@
 
         .section-title { font-size: 13px; font-weight: 700; color: var(--sub); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
         a.link { color: var(--primary); }
+
+        .btn-gear {
+            background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25);
+            color: #fff; width: 38px; height: 38px; border-radius: 12px; font-size: 16px;
+            padding: 0; flex-shrink: 0;
+        }
+        .settings-hint { font-size: 12px; color: var(--sub); margin-bottom: 8px; }
+        input[type=password] {
+            width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--card-border);
+            background: rgba(15,23,42,0.6); color: var(--text); font-size: 14px; margin-bottom: 8px;
+        }
     </style>
 </head>
 
@@ -125,10 +136,19 @@
             <h1>🤖 ИИ-архитектор</h1>
             <span>Поиск → скачивание → метаданные → проверка дублей → форма публикации</span>
         </div>
+        <button class="btn-gear" onclick="toggleSettings()" title="Настройки ИИ">⚙️</button>
         <button class="btn-back" onclick="AndroidBridge.returnToParser()">← Назад</button>
     </div>
 
     <div class="section">
+        <div class="card" id="settingsCard" style="display:none">
+            <div class="section-title">Настройки ИИ</div>
+            <div class="settings-hint">Ключ OpenRouter для nvidia/nemotron-3-ultra-550b-a55b:free — используется для подсказки при выборе кандидата, вердикта по дублям и финальной проверки корректности. Без ключа архитектор работает по встроенным эвристикам.</div>
+            <input type="password" id="openrouterKeyInput" placeholder="sk-or-v1-…">
+            <button onclick="saveOpenRouterKey()">Сохранить ключ</button>
+            <div class="settings-hint" id="keyStatus" style="margin-top:8px"></div>
+        </div>
+
         <div class="card">
             <div class="query-row">
                 <input type="text" id="queryInput" placeholder="Автор и/или название книги…">
@@ -183,6 +203,28 @@
 
         function hide(id) { document.getElementById(id).style.display = 'none'; }
         function show(id) { document.getElementById(id).style.display = 'block'; }
+
+        function toggleSettings() {
+            const card = document.getElementById('settingsCard');
+            card.style.display = (card.style.display === 'none') ? 'block' : 'none';
+        }
+
+        function saveOpenRouterKey() {
+            const key = document.getElementById('openrouterKeyInput').value.trim();
+            if (window.AndroidBridge && AndroidBridge.saveOpenRouterKey) {
+                AndroidBridge.saveOpenRouterKey(key);
+                document.getElementById('keyStatus').textContent = key ? '✅ Ключ сохранён' : '✅ Ключ очищен — работаю по встроенным эвристикам';
+            } else {
+                document.getElementById('keyStatus').textContent = '❌ Функция доступна только в приложении';
+            }
+        }
+
+        function loadOpenRouterKey() {
+            if (window.AndroidBridge && AndroidBridge.getOpenRouterKey) {
+                const key = AndroidBridge.getOpenRouterKey();
+                document.getElementById('openrouterKeyInput').value = key || '';
+            }
+        }
 
         function startPipeline() {
             const q = document.getElementById('queryInput').value.trim();
@@ -354,6 +396,7 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('queryInput').addEventListener('keydown', e => { if (e.key === 'Enter') startPipeline(); });
+            loadOpenRouterKey();
         });
     </script>
 </body>

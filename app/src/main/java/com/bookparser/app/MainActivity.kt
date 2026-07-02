@@ -1756,7 +1756,7 @@ class MainActivity : AppCompatActivity() {
             allowFileAccess = true
             allowContentAccess = true
         }
-        webViewArchitect.addJavascriptInterface(ArchitectBridge(), "ArchitectBridge")
+        webViewArchitect.addJavascriptInterface(ArchitectBridge(), "AndroidBridge")
         webViewArchitect.webViewClient = EncryptedWebViewClient(this)
         webViewArchitect.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(cm: android.webkit.ConsoleMessage?): Boolean {
@@ -1794,6 +1794,17 @@ class MainActivity : AppCompatActivity() {
     inner class ArchitectBridge {
         @android.webkit.JavascriptInterface
         fun getAuthState(): String = ParserJsInterface().getAuthState()
+
+        @android.webkit.JavascriptInterface
+        fun getOpenRouterKey(): String =
+            getSharedPreferences("app_settings", MODE_PRIVATE).getString("openrouter_api_key", "") ?: ""
+
+        @android.webkit.JavascriptInterface
+        fun saveOpenRouterKey(key: String) {
+            getSharedPreferences("app_settings", MODE_PRIVATE).edit()
+                .putString("openrouter_api_key", key.trim())
+                .apply()
+        }
 
         @android.webkit.JavascriptInterface
         fun startSearch(query: String) {
