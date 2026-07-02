@@ -107,6 +107,12 @@
         .dup-score { color: var(--primary); font-weight: 700; }
         .banner-warn { background: rgba(244,63,94,0.15); border: 1px solid rgba(244,63,94,0.4); border-radius: 14px; padding: 12px; font-size: 13px; }
         .banner-ok { background: rgba(34,197,94,0.15); border: 1px solid rgba(34,197,94,0.4); border-radius: 14px; padding: 12px; font-size: 13px; }
+        .ai-badge {
+            display: inline-block; font-size: 11px; font-weight: 700; color: #0f172a;
+            background: linear-gradient(135deg, #a78bfa, #60a5fa); padding: 2px 8px; border-radius: 8px; margin-bottom: 6px;
+        }
+        .ai-note { font-size: 12px; color: var(--sub); margin-top: 4px; }
+        .candidate.ai-pick { border-color: rgba(167,139,250,0.6); box-shadow: 0 0 0 1px rgba(167,139,250,0.3); }
 
         .section-title { font-size: 13px; font-weight: 700; color: var(--sub); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
         a.link { color: var(--primary); }
@@ -150,6 +156,11 @@
             <div id="duplicateBody"></div>
         </div>
 
+        <div class="card" id="correctnessCard" style="display:none">
+            <div class="section-title">Финальная проверка корректности (ИИ)</div>
+            <div id="correctnessBody"></div>
+        </div>
+
         <div class="card" id="readyCard" style="display:none">
             <div class="banner-ok">✅ Форма на форуме заполнена и ждёт вашей проверки. Ничего не отправлено — сабмит только вручную.</div>
             <button style="margin-top:10px" onclick="AndroidBridge.openForumForReview()">Перейти на форум для проверки и отправки</button>
@@ -177,7 +188,7 @@
             const q = document.getElementById('queryInput').value.trim();
             if (!q) { log('❌ Введите автора или название'); return; }
             document.getElementById('logBox').innerHTML = '';
-            hide('candidatesCard'); hide('extractedCard'); hide('duplicateCard'); hide('readyCard');
+            hide('candidatesCard'); hide('extractedCard'); hide('duplicateCard'); hide('correctnessCard'); hide('readyCard');
             document.getElementById('btnStart').disabled = true;
             if (window.AndroidBridge && AndroidBridge.startSearch) {
                 AndroidBridge.startSearch(q);
@@ -194,7 +205,7 @@
             return '📁';
         }
 
-        function renderCandidates(items) {
+        function renderCandidates(items, aiRecommendedIndex, aiReason) {
             const list = document.getElementById('candidatesList');
             list.innerHTML = '';
             if (!items || !items.length) {
@@ -202,9 +213,11 @@
                 show('candidatesCard');
                 return;
             }
-            items.forEach(item => {
+            const hasAiPick = aiRecommendedIndex !== null && aiRecommendedIndex !== undefined;
+            items.forEach((item, idx) => {
                 const div = document.createElement('div');
-                div.className = 'candidate';
+                const isPick = hasAiPick && idx === aiRecommendedIndex;
+                div.className = 'candidate' + (isPick ? ' ai-pick' : '');
                 let fmtHtml = '';
                 (item.formats || []).forEach(f => {
                     const payload = {
@@ -214,8 +227,10 @@
                     fmtHtml += `<button class="fmt-btn" onclick='selectCandidate(${JSON.stringify(payload)})'>${fmtIcon(f.label)} ${esc(f.label)}</button>`;
                 });
                 div.innerHTML = `
+                    ${isPick ? `<div class="ai-badge">🤖 Рекомендация ИИ</div>` : ''}
                     <div class="candidate-title">${esc(item.title)}</div>
                     <div class="candidate-meta">${esc(item.author || '')} · ${esc(item.source || '')}</div>
+                    ${isPick && aiReason ? `<div class="ai-note">${esc(aiReason)}</div>` : ''}
                     <div class="fmt-row">${fmtHtml}</div>`;
                 list.appendChild(div);
             });
@@ -224,7 +239,7 @@
 
         function selectCandidate(payload) {
             document.getElementById('btnStart').disabled = true;
-            hide('extractedCard'); hide('duplicateCard'); hide('readyCard');
+            hide('extractedCard'); hide('duplicateCard'); hide('correctnessCard'); hide('readyCard');
             if (window.AndroidBridge && AndroidBridge.selectCandidate) {
                 AndroidBridge.selectCandidate(JSON.stringify(payload));
             }
@@ -249,7 +264,7 @@
             show('extractedCard');
         }
 
-        function renderDuplicates(matches, likelyDuplicate) {
+        function renderDuplicates(matches, likelyDuplicate, aiVerdict) {
             const body = document.getElementById('duplicateBody');
             let html = '';
             if (likelyDuplicate) {
@@ -259,11 +274,25 @@
             } else {
                 html += `<div class="banner-ok">✅ Явных совпадений нет, но вот похожие темы — стоит проверить глазами.</div>`;
             }
+            if (aiVerdict) {
+                html += `<div class="ai-badge">🤖 Вердикт ИИ: ${aiVerdict.isDuplicate ? 'дубликат' : 'не дубликат'}</div>`;
+                if (aiVerdict.reason) html += `<div class="ai-note">${esc(aiVerdict.reason)}</div>`;
+            }
             (matches || []).slice(0, 5).forEach(m => {
                 html += `<div class="dup-match"><a class="link" href="#" onclick="AndroidBridge.openForumForReview();return false;">${esc(m.title)}</a> <span class="dup-score">score: ${m.score}</span></div>`;
             });
             body.innerHTML = html;
             show('duplicateCard');
+        }
+
+        function renderCorrectness(result) {
+            const body = document.getElementById('correctnessBody');
+            let html = `<div class="${result.ok === false ? 'banner-warn' : 'banner-ok'}">${result.ok === false ? '⚠️' : '✅'} ${esc(result.summary || '')}</div>`;
+            (result.warnings || []).forEach(w => {
+                html += `<div class="dup-match">• ${esc(w)}</div>`;
+            });
+            body.innerHTML = html;
+            show('correctnessCard');
         }
 
         window.onArchitectStep = function (step) {
@@ -273,7 +302,7 @@
                     break;
                 case 'candidates':
                     log('📚 Найдено вариантов: ' + (step.items ? step.items.length : 0));
-                    renderCandidates(step.items || []);
+                    renderCandidates(step.items || [], step.aiRecommendedIndex, step.aiReason);
                     document.getElementById('btnStart').disabled = false;
                     break;
                 case 'downloading':
@@ -291,10 +320,21 @@
                     break;
                 case 'duplicate_result':
                     log('🔎 Проверка дублей завершена (совпадений: ' + ((step.matches && step.matches.length) || 0) + ')');
-                    renderDuplicates(step.matches || [], !!step.likelyDuplicate);
+                    renderDuplicates(step.matches || [], !!step.likelyDuplicate, step.aiVerdict);
                     break;
                 case 'stopped_duplicate':
                     log('⛔ Похоже, книга уже есть — публикация не готовится.');
+                    document.getElementById('btnStart').disabled = false;
+                    break;
+                case 'checking_correctness':
+                    log('🤖 ИИ проверяет корректность и полноту данных…');
+                    break;
+                case 'correctness_result':
+                    log('🧾 Проверка корректности: ' + ((step.result && step.result.summary) || ''));
+                    renderCorrectness(step.result || {});
+                    break;
+                case 'stopped_correctness':
+                    log('⛔ ИИ нашёл проблемы в данных — публикация не готовится, проверьте вручную.');
                     document.getElementById('btnStart').disabled = false;
                     break;
                 case 'filling_form':

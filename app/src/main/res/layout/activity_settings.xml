@@ -160,6 +160,39 @@
                     android:text="• Wikipedia — рекомендуется для большинства случаев (стабильнее)\n• РУВИКИ — российская энциклопедия через REST API\n• РУВИКИ ИИ — экспериментальная функция (в разработке)\n• Для работы требуется подключение к интернету" />
             </LinearLayout>
 
+            <!-- Divider -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="16dp"
+                android:background="@color/text_hint" />
+
+            <!-- AI Architect (OpenRouter) Section -->
+            <TextView
+                style="@style/HeaderTextStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="ИИ-архитектор (OpenRouter)" />
+
+            <TextView
+                style="@style/SubHeaderTextStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Ключ используется моделью nvidia/nemotron-3-ultra-550b-a55b:free для проверки дублей, помощи в выборе кандидата при поиске и финальной проверки корректности перед публикацией. Без ключа архитектор работает как раньше — только по встроенным эвристикам." />
+
+            <EditText
+                android:id="@+id/edittext_openrouter_key"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:autofillHints="password"
+                android:hint="sk-or-v1-…"
+                android:inputType="textPassword"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_hint" />
+
             <!-- Save Button -->
             <Button
                 android:id="@+id/button_save_settings"

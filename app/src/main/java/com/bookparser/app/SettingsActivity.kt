@@ -44,10 +44,13 @@ class SettingsActivity : AppCompatActivity() {
         val autoPublish = prefs.getBoolean("auto_publish", false)
         binding.checkboxAutoPublish.isChecked = autoPublish
     
+        // Загрузка ключа OpenRouter (для ИИ-архитектора)
+        binding.edittextOpenrouterKey.setText(prefs.getString("openrouter_api_key", ""))
+
         // Загрузка настройки источника биографии
         val biographySource = prefs.getString("biography_source", BiographyParser.SOURCE_WIKIPEDIA)
             ?: BiographyParser.SOURCE_WIKIPEDIA
-    
+
         when (biographySource) {
             BiographyParser.SOURCE_WIKIPEDIA -> {
                 binding.radioWikipedia.isChecked = true
@@ -74,7 +77,10 @@ class SettingsActivity : AppCompatActivity() {
         with(prefs.edit()) {
             // Сохранение настройки автопубликации
             putBoolean("auto_publish", binding.checkboxAutoPublish.isChecked)
-    
+
+            // Сохранение ключа OpenRouter (для ИИ-архитектора)
+            putString("openrouter_api_key", binding.edittextOpenrouterKey.text?.toString()?.trim() ?: "")
+
             // Сохранение настройки источника биографии
             val biographySource = when {
                 binding.radioWikipedia.isChecked -> BiographyParser.SOURCE_WIKIPEDIA
@@ -123,7 +129,8 @@ class SettingsActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("app_settings", MODE_PRIVATE)
         val savedAutoPublish = prefs.getBoolean("auto_publish", false)
         val savedBiographySource = prefs.getString("biography_source", BiographyParser.SOURCE_WIKIPEDIA)
-    
+        val savedOpenRouterKey = prefs.getString("openrouter_api_key", "")
+
         val currentAutoPublish = binding.checkboxAutoPublish.isChecked
         val currentBiographySource = when {
             binding.radioWikipedia.isChecked -> BiographyParser.SOURCE_WIKIPEDIA
@@ -131,9 +138,10 @@ class SettingsActivity : AppCompatActivity() {
             binding.radioRuwikiAi.isChecked -> BiographyParser.SOURCE_RUWIKI_AI
             else -> BiographyParser.SOURCE_WIKIPEDIA
         }
-    
+        val currentOpenRouterKey = binding.edittextOpenrouterKey.text?.toString()?.trim() ?: ""
+
         // Если настройки изменены, показываем предупреждение
-        if (savedAutoPublish != currentAutoPublish || savedBiographySource != currentBiographySource) {
+        if (savedAutoPublish != currentAutoPublish || savedBiographySource != currentBiographySource || savedOpenRouterKey != currentOpenRouterKey) {
             Toast.makeText(
                 this,
                 "⚠ Настройки не сохранены",

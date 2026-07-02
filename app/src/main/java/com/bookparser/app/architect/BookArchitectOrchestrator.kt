@@ -5,6 +5,7 @@ import android.util.Base64
 import android.webkit.CookieManager
 import com.bookparser.app.AppLogger
 import com.bookparser.app.MainActivity
+import com.bookparser.app.api.OpenRouterClient
 import com.bookparser.app.web.search.BookSearchManager
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CompletableDeferred
@@ -44,15 +45,31 @@ class BookArchitectOrchestrator(private val activity: MainActivity) {
     }
 
     private val searchManager = BookSearchManager()
+    private val openRouterClient = OpenRouterClient()
     private var parsedDeferred: CompletableDeferred<String>? = null
     private var duplicateDeferred: CompletableDeferred<String>? = null
+
+    /** Empty when the user hasn't configured a key in Settings — every AI step then no-ops. */
+    private fun apiKey(): String =
+        activity.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            .getString("openrouter_api_key", "")?.trim() ?: ""
 
     fun startSearch(query: String) {
         activity.lifecycleScope.launch {
             report(JSONObject().put("type", "searching"))
             try {
                 val items = searchAllSites(query)
-                report(JSONObject().put("type", "candidates").put("items", items))
+                val stepReport = JSONObject().put("type", "candidates").put("items", items)
+
+                val key = apiKey()
+                if (key.isNotEmpty() && items.length() > 0) {
+                    val verdict = openRouterClient.rankCandidates(key, query, items)
+                    if (verdict != null) {
+                        stepReport.put("aiRecommendedIndex", verdict.opt("bestIndex") ?: JSONObject.NULL)
+                        stepReport.put("aiReason", verdict.optString("reason"))
+                    }
+                }
+                report(stepReport)
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Search failed: ${e.message}")
                 reportError("Ошибка поиска: ${e.message}")
@@ -85,24 +102,48 @@ class BookArchitectOrchestrator(private val activity: MainActivity) {
                     reportError("Не удалось извлечь метаданные из файла (тайм-аут разбора)")
                     return@launch
                 }
-                report(JSONObject().put("type", "extracted").put("book", JSONObject(bookJson)))
+                val book = JSONObject(bookJson)
+                report(JSONObject().put("type", "extracted").put("book", book))
+
+                val key = apiKey()
 
                 report(JSONObject().put("type", "checking_duplicate"))
                 val dupArray = runDuplicateCheck()
                 val topScore = if (dupArray.length() > 0) dupArray.getJSONObject(0).optInt("score", 0) else 0
-                val likelyDuplicate = topScore >= DUPLICATE_SCORE_THRESHOLD
-                report(
-                    JSONObject()
-                        .put("type", "duplicate_result")
-                        .put("matches", dupArray)
-                        .put("likelyDuplicate", likelyDuplicate)
-                )
+                var likelyDuplicate = topScore >= DUPLICATE_SCORE_THRESHOLD
+
+                val dupResultReport = JSONObject()
+                    .put("type", "duplicate_result")
+                    .put("matches", dupArray)
+
+                if (key.isNotEmpty() && dupArray.length() > 0) {
+                    val verdict = openRouterClient.checkDuplicate(key, book, dupArray)
+                    if (verdict != null) {
+                        dupResultReport.put("aiVerdict", verdict)
+                        if (verdict.optBoolean("isDuplicate", false)) likelyDuplicate = true
+                    }
+                }
+                dupResultReport.put("likelyDuplicate", likelyDuplicate)
+                report(dupResultReport)
 
                 if (likelyDuplicate) {
                     report(JSONObject().put("type", "stopped_duplicate"))
-                } else {
-                    requestPublishPrefill()
+                    return@launch
                 }
+
+                if (key.isNotEmpty()) {
+                    report(JSONObject().put("type", "checking_correctness"))
+                    val correctness = openRouterClient.checkCorrectness(key, book)
+                    if (correctness != null) {
+                        report(JSONObject().put("type", "correctness_result").put("result", correctness))
+                        if (!correctness.optBoolean("ok", true)) {
+                            report(JSONObject().put("type", "stopped_correctness"))
+                            return@launch
+                        }
+                    }
+                }
+
+                requestPublishPrefill()
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Pipeline failed: ${e.message}")
                 reportError("Ошибка: ${e.message}")
