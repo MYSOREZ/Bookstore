@@ -6,8 +6,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
     - name: Checkout code
@@ -22,12 +20,6 @@ jobs:
     - name: Set up Gradle
       uses: gradle/actions/setup-gradle@v4
 
-    - name: Decode Keystore
-      env:
-        KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-      run: |
-        echo "$KEYSTORE_BASE64" | base64 --decode > release-key.jks
-
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
@@ -35,37 +27,11 @@ jobs:
       shell: pwsh
       run: ./encrypt_translator.ps1
 
-    - name: Build with Gradle
-      env:
-        RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-        RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-      run: ./gradlew assembleRelease
+    - name: Build Debug APK with Gradle
+      run: ./gradlew assembleDebug
 
     - name: Upload APK to Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: Bookstore-APK
-        path: app/build/outputs/apk/release/Bookstore-*.apk
-
-    - name: Get Version
-      id: get_version
-      run: |
-        VERSION_NAME=$(grep 'versionName' app/build.gradle | head -1 | awk '{print $2}' | tr -d '"' | tr -d "'")
-        echo "version=$VERSION_NAME" >> $GITHUB_OUTPUT
-
-    - name: Generate Release Notes
-      env:
-        VERSION_NAME: ${{ steps.get_version.outputs.version }}
-      run: python3 .github/generate_release_notes.py
-
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: v${{ steps.get_version.outputs.version }}
-        name: Bookstore v${{ steps.get_version.outputs.version }}
-        body_path: release_notes.md
-        draft: false
-        prerelease: false
-        files: app/build/outputs/apk/release/Bookstore-*.apk
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        name: Bookstore-APK-debug
+        path: app/build/outputs/apk/debug/Bookstore-*.apk
