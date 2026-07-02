@@ -268,11 +268,13 @@
                     };
                     fmtHtml += `<button class="fmt-btn" onclick='selectCandidate(${JSON.stringify(payload)})'>${fmtIcon(f.label)} ${esc(f.label)}</button>`;
                 });
+                const isAnnas = item.source === 'annas';
                 div.innerHTML = `
                     ${isPick ? `<div class="ai-badge">🤖 Рекомендация ИИ</div>` : ''}
                     <div class="candidate-title">${esc(item.title)}</div>
                     <div class="candidate-meta">${esc(item.author || '')} · ${esc(item.source || '')}</div>
                     ${isPick && aiReason ? `<div class="ai-note">${esc(aiReason)}</div>` : ''}
+                    ${isAnnas ? `<div class="ai-note">⚠️ Автоскачивание с Anna's Archive не поддерживается (DDoS-проверка перед файлом) — откройте вручную по кнопке ниже.</div>` : ''}
                     <div class="fmt-row">${fmtHtml}</div>`;
                 list.appendChild(div);
             });

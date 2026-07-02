@@ -65,11 +65,16 @@ class BookArchitectOrchestrator(private val activity: MainActivity) {
                 val items = searchAllSites(query)
                 val stepReport = JSONObject().put("type", "candidates").put("items", items)
 
+                // Anna's Archive links can't be auto-downloaded (see selectCandidate), so don't
+                // let the AI recommend one — rank only sources the architect can actually fetch.
+                val downloadableIndices = (0 until items.length()).filter { items.getJSONObject(it).optString("source") != "annas" }
                 val key = apiKey()
-                if (key.isNotEmpty() && items.length() > 0) {
-                    val verdict = openRouterClient.rankCandidates(key, query, items)
-                    if (verdict != null) {
-                        stepReport.put("aiRecommendedIndex", verdict.opt("bestIndex") ?: JSONObject.NULL)
+                if (key.isNotEmpty() && downloadableIndices.isNotEmpty()) {
+                    val downloadableItems = JSONArray().apply { downloadableIndices.forEach { put(items.getJSONObject(it)) } }
+                    val verdict = openRouterClient.rankCandidates(key, query, downloadableItems)
+                    val bestLocalIndex = verdict?.opt("bestIndex") as? Int
+                    if (verdict != null && bestLocalIndex != null && bestLocalIndex in downloadableIndices.indices) {
+                        stepReport.put("aiRecommendedIndex", downloadableIndices[bestLocalIndex])
                         stepReport.put("aiReason", verdict.optString("reason"))
                     }
                 }
@@ -87,6 +92,15 @@ class BookArchitectOrchestrator(private val activity: MainActivity) {
                 val candidate = JSONObject(candidateJson)
                 report(JSONObject().put("type", "downloading").put("candidate", candidate))
                 AppLogger.i(TAG, "selectCandidate: ${candidate.optString("title")} / ${candidate.optString("formatLabel")} / ${candidate.optString("formatUrl")}")
+
+                if (candidate.optString("source") == "annas") {
+                    reportError(
+                        "Anna's Archive пока не поддерживается для автоскачивания: ссылка ведёт на карточку " +
+                        "книги, а реальный файл там за DDoS-проверкой и страницей ожидания (slow_download), " +
+                        "которую нельзя пройти без браузера. Выберите вариант с другого источника (flibusta, zlib, librain)."
+                    )
+                    return@launch
+                }
 
                 val formatUrl = candidate.optString("formatUrl")
                 if (formatUrl.isEmpty()) {
