@@ -104,7 +104,7 @@ class DohHttpClient private constructor() {
         }
     }
 
-    suspend fun fetchViaDohBytes(url: String): Pair<ByteArray, String>? = withContext(Dispatchers.IO) {
+    suspend fun fetchViaDohBytes(url: String, extraHeaders: Map<String, String> = emptyMap()): Pair<ByteArray, String>? = withContext(Dispatchers.IO) {
         try {
             val uri = java.net.URI(url)
             val hostname = uri.host ?: return@withContext null
@@ -114,13 +114,14 @@ class DohHttpClient private constructor() {
             } else {
                 url
             }
-            val request = Request.Builder()
+            val builder = Request.Builder()
                 .url(actualUrl)
                 .header("Host", hostname)
                 .header("User-Agent", USER_AGENT)
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                 .header("Accept-Language", "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7")
-                .build()
+            extraHeaders.forEach { (k, v) -> builder.header(k, v) }
+            val request = builder.build()
             val response = sslClient.newCall(request).execute()
             if (response.isSuccessful) {
                 val bytes = response.body?.bytes() ?: return@withContext null

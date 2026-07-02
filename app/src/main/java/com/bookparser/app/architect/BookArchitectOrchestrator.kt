@@ -7,6 +7,7 @@ import com.bookparser.app.AppLogger
 import com.bookparser.app.MainActivity
 import com.bookparser.app.api.OpenRouterClient
 import com.bookparser.app.web.search.BookSearchManager
+import com.bookparser.app.web.search.DohHttpClient
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -221,23 +222,36 @@ class BookArchitectOrchestrator(private val activity: MainActivity) {
         return if (base.lowercase().endsWith(".$label")) base else "$base.$label"
     }
 
-    private suspend fun downloadBytes(url: String): ByteArray? = withContext(Dispatchers.IO) {
-        try {
-            val client = OkHttpClient.Builder()
-                .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(60, TimeUnit.SECONDS)
-                .followRedirects(true)
-                .build()
-            val requestBuilder = Request.Builder()
-                .url(url)
-                .header("User-Agent", MainActivity.MOBILE_UA)
-            val cookies = CookieManager.getInstance().getCookie(url)
-            if (!cookies.isNullOrEmpty()) requestBuilder.header("Cookie", cookies)
-            val response = client.newCall(requestBuilder.build()).execute()
-            if (response.isSuccessful) response.body?.bytes() else null
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Download failed: ${e.message}")
-            null
+    /**
+     * Some sources (flibusta in particular) are DNS-blocked for plain requests — search already
+     * works around this via DohHttpClient's DNS-over-HTTPS resolution, so downloads need the same
+     * workaround. Try DoH first, fall back to a direct OkHttp request for sources that don't need it.
+     */
+    private suspend fun downloadBytes(url: String): ByteArray? {
+        val cookies = CookieManager.getInstance().getCookie(url)
+        val cookieHeader: Map<String, String> =
+            cookies?.takeIf { it.isNotEmpty() }?.let { mapOf("Cookie" to it) } ?: emptyMap()
+
+        val viaDoh = DohHttpClient.INSTANCE.fetchViaDohBytes(url, cookieHeader)?.first
+        if (viaDoh != null && viaDoh.isNotEmpty()) return viaDoh
+
+        return withContext(Dispatchers.IO) {
+            try {
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(30, TimeUnit.SECONDS)
+                    .readTimeout(60, TimeUnit.SECONDS)
+                    .followRedirects(true)
+                    .build()
+                val requestBuilder = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", MainActivity.MOBILE_UA)
+                cookieHeader["Cookie"]?.let { requestBuilder.header("Cookie", it) }
+                val response = client.newCall(requestBuilder.build()).execute()
+                if (response.isSuccessful) response.body?.bytes() else null
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Download failed: ${e.message}")
+                null
+            }
         }
     }
 
