@@ -620,6 +620,23 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Called from JS injected into THIS WebView (webViewParser) by BookArchitectOrchestrator —
+        // not from architect.html, which is a different WebView with its own AndroidBridge (ArchitectBridge).
+        @android.webkit.JavascriptInterface
+        fun notifyBookParsed(json: String) {
+            architectOrchestrator.onBookParsed(json)
+        }
+
+        @android.webkit.JavascriptInterface
+        fun notifyDuplicateCheckResult(json: String) {
+            architectOrchestrator.onDuplicateCheckResult(json)
+        }
+
+        @android.webkit.JavascriptInterface
+        fun notifyArchitectError(msg: String) {
+            architectOrchestrator.onError(msg)
+        }
+
         @android.webkit.JavascriptInterface
         fun openTranslator(fileBase64: String, fileName: String) {
             runOnUiThread {
@@ -1829,21 +1846,6 @@ class MainActivity : AppCompatActivity() {
         @android.webkit.JavascriptInterface
         fun returnToParser() {
             runOnUiThread { showParserWebView() }
-        }
-
-        @android.webkit.JavascriptInterface
-        fun notifyBookParsed(json: String) {
-            architectOrchestrator.onBookParsed(json)
-        }
-
-        @android.webkit.JavascriptInterface
-        fun notifyDuplicateCheckResult(json: String) {
-            architectOrchestrator.onDuplicateCheckResult(json)
-        }
-
-        @android.webkit.JavascriptInterface
-        fun notifyArchitectError(msg: String) {
-            architectOrchestrator.onError(msg)
         }
     }
 
