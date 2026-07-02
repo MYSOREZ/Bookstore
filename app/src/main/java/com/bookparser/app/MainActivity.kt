@@ -47,11 +47,15 @@ class MainActivity : AppCompatActivity() {
         private const val URL_LOGIN = "https://4pda.to/forum/index.php?act=auth"
         private const val URL_NEW_TOPIC = "https://4pda.to/forum/index.php?act=zfw&f=218"
         private const val URL_SEARCH_BASE = "https://4pda.to/forum/index.php?act=search&source=all&result=topics&no_top=1&forums%5B%5D=18&forums%5B%5D=218&query="
-        private const val MOBILE_UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36"
+        internal const val MOBILE_UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36"
     }
 
-    private lateinit var webViewParser: WebView
-    private lateinit var webViewForum: WebView
+    internal lateinit var webViewParser: WebView
+    internal lateinit var webViewForum: WebView
+    internal lateinit var webViewArchitect: WebView
+    private var isArchitectVisible = false
+    internal var isArchitectPublishing = false
+    internal val architectOrchestrator by lazy { com.bookparser.app.architect.BookArchitectOrchestrator(this) }
 
     // Log panel views
     private lateinit var logPanel: LinearLayout
@@ -106,12 +110,14 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnShowLog).visibility = View.VISIBLE
         
         webViewSearch = findViewById(R.id.webViewSearch)
+        webViewArchitect = findViewById(R.id.webViewArchitect)
 
         setupParserWebView()
         setupForumWebView()
         setupTranslatorWebView()
         setupGeminiAuthWebView()
         setupSearchWebView()
+        setupArchitectWebView()
 
         com.bookparser.app.web.search.WebViewSearcher.init(this)
 
@@ -604,6 +610,13 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 pendingSearchBookTitle = initialQuery
                 showSearchWebView()
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun openArchitectTab() {
+            runOnUiThread {
+                showArchitectWebView()
             }
         }
 
@@ -1487,6 +1500,10 @@ class MainActivity : AppCompatActivity() {
                     }
                     parserCallback("window.onPublishProgress('complete', '')")
                     Toast.makeText(this@MainActivity, "Форма заполнена. ${uploadMsg}Проверьте и отправьте!", Toast.LENGTH_LONG).show()
+                    if (isArchitectPublishing) {
+                        isArchitectPublishing = false
+                        architectOrchestrator.onPublishComplete()
+                    }
                 }
 
             } catch (e: Exception) {
@@ -1494,6 +1511,10 @@ class MainActivity : AppCompatActivity() {
                     val msg = (e.message ?: "Unknown error").escapeJs()
                     parserCallback("window.onPublishProgress('error', '$msg')")
                     Toast.makeText(this@MainActivity, "Ошибка: ${e.message}", Toast.LENGTH_LONG).show()
+                    if (isArchitectPublishing) {
+                        isArchitectPublishing = false
+                        architectOrchestrator.onError(e.message ?: "Ошибка публикации")
+                    }
                 }
             }
         }
@@ -1606,27 +1627,31 @@ class MainActivity : AppCompatActivity() {
     // ════════════════════════════════════════════════
     //  VIEW TOGGLING (forum for debug)
     // ════════════════════════════════════════════════
-    private fun showForumWebView() {
+    internal fun showForumWebView() {
         isForumVisible = true
         isTranslatorVisible = false
         isGeminiAuthMode = false
+        isArchitectVisible = false
         webViewForum.visibility = View.VISIBLE
         webViewParser.visibility = View.GONE
         webViewTranslator.visibility = View.GONE
         webViewGeminiAuth.visibility = View.GONE
         webViewSearch.visibility = View.GONE
+        webViewArchitect.visibility = View.GONE
     }
 
-    private fun showParserWebView() {
+    internal fun showParserWebView() {
         isForumVisible = false
         isTranslatorVisible = false
         isGeminiAuthMode = false
         isSearchVisible = false
+        isArchitectVisible = false
         webViewParser.visibility = View.VISIBLE
         webViewForum.visibility = View.GONE
         webViewTranslator.visibility = View.GONE
         webViewGeminiAuth.visibility = View.GONE
         webViewSearch.visibility = View.GONE
+        webViewArchitect.visibility = View.GONE
     }
 
     private fun showTranslatorWebView() {
@@ -1634,11 +1659,13 @@ class MainActivity : AppCompatActivity() {
         isTranslatorVisible = true
         isGeminiAuthMode = false
         isSearchVisible = false
+        isArchitectVisible = false
         webViewTranslator.visibility = View.VISIBLE
         webViewParser.visibility = View.GONE
         webViewForum.visibility = View.GONE
         webViewGeminiAuth.visibility = View.GONE
         webViewSearch.visibility = View.GONE
+        webViewArchitect.visibility = View.GONE
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -1695,11 +1722,13 @@ class MainActivity : AppCompatActivity() {
         isTranslatorVisible = false
         isGeminiAuthMode = false
         isSearchVisible = true
+        isArchitectVisible = false
         webViewSearch.visibility = View.VISIBLE
         webViewParser.visibility = View.GONE
         webViewForum.visibility = View.GONE
         webViewTranslator.visibility = View.GONE
         webViewGeminiAuth.visibility = View.GONE
+        webViewArchitect.visibility = View.GONE
     }
 
     private fun searchCallback(js: String) {
@@ -1711,10 +1740,100 @@ class MainActivity : AppCompatActivity() {
         isForumVisible = false
         isTranslatorVisible = false
         isGeminiAuthMode = true
+        isArchitectVisible = false
         webViewGeminiAuth.visibility = View.VISIBLE
         webViewParser.visibility = View.GONE
         webViewForum.visibility = View.GONE
         webViewTranslator.visibility = View.GONE
+        webViewArchitect.visibility = View.GONE
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun setupArchitectWebView() {
+        webViewArchitect.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            allowFileAccess = true
+            allowContentAccess = true
+        }
+        webViewArchitect.addJavascriptInterface(ArchitectBridge(), "ArchitectBridge")
+        webViewArchitect.webViewClient = EncryptedWebViewClient(this)
+        webViewArchitect.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(cm: android.webkit.ConsoleMessage?): Boolean {
+                if (cm != null && cm.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
+                    AppLogger.e("WebViewArch", "${cm.message()} (${cm.sourceId()}:${cm.lineNumber()})")
+                }
+                return true
+            }
+        }
+        webViewArchitect.loadUrl("file:///android_asset/architect.html")
+    }
+
+    internal fun showArchitectWebView() {
+        isForumVisible = false
+        isTranslatorVisible = false
+        isGeminiAuthMode = false
+        isSearchVisible = false
+        isArchitectVisible = true
+        webViewArchitect.visibility = View.VISIBLE
+        webViewParser.visibility = View.GONE
+        webViewForum.visibility = View.GONE
+        webViewTranslator.visibility = View.GONE
+        webViewGeminiAuth.visibility = View.GONE
+        webViewSearch.visibility = View.GONE
+    }
+
+    internal fun architectCallback(js: String) {
+        val safeJs = "try { $js } catch(e) { console.error('architectCallback error:', e); }"
+        runOnUiThread { webViewArchitect.evaluateJavascript(safeJs, null) }
+    }
+
+    // ════════════════════════════════════════════════
+    //  ARCHITECT JS INTERFACE (ArchitectBridge)
+    // ════════════════════════════════════════════════
+    inner class ArchitectBridge {
+        @android.webkit.JavascriptInterface
+        fun getAuthState(): String = ParserJsInterface().getAuthState()
+
+        @android.webkit.JavascriptInterface
+        fun startSearch(query: String) {
+            architectOrchestrator.startSearch(query)
+        }
+
+        @android.webkit.JavascriptInterface
+        fun selectCandidate(candidateJson: String) {
+            architectOrchestrator.selectCandidate(candidateJson)
+        }
+
+        @android.webkit.JavascriptInterface
+        fun requestPublishPrefill() {
+            architectOrchestrator.requestPublishPrefill()
+        }
+
+        @android.webkit.JavascriptInterface
+        fun openForumForReview() {
+            runOnUiThread { showForumWebView() }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun returnToParser() {
+            runOnUiThread { showParserWebView() }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun notifyBookParsed(json: String) {
+            architectOrchestrator.onBookParsed(json)
+        }
+
+        @android.webkit.JavascriptInterface
+        fun notifyDuplicateCheckResult(json: String) {
+            architectOrchestrator.onDuplicateCheckResult(json)
+        }
+
+        @android.webkit.JavascriptInterface
+        fun notifyArchitectError(msg: String) {
+            architectOrchestrator.onError(msg)
+        }
     }
 
     // ════════════════════════════════════════════════
@@ -1842,7 +1961,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun parserCallback(js: String) {
+    internal fun parserCallback(js: String) {
         val safeJs = "try { $js } catch(e) { console.error('parserCallback error:', e); if(typeof actionLog==='function') actionLog('parserCallback error: ' + e.message, 'err'); }"
         runOnUiThread {
             webViewParser.evaluateJavascript(safeJs, null)
@@ -1864,6 +1983,8 @@ class MainActivity : AppCompatActivity() {
             showParserWebView()
         } else if (isSearchVisible) {
             showParserWebView()
+        } else if (isArchitectVisible) {
+            showParserWebView()
         } else if (webViewParser.canGoBack()) {
             webViewParser.goBack()
         } else {
@@ -1878,6 +1999,7 @@ class MainActivity : AppCompatActivity() {
         webViewTranslator.destroy()
         webViewGeminiAuth.destroy()
         webViewSearch.destroy()
+        webViewArchitect.destroy()
         super.onDestroy()
     }
 

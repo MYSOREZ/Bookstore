@@ -699,6 +699,7 @@
         <div class="header-buttons" style="display:flex; flex-direction:column; gap:6px;">
             <button class="btn-translate-nav" onclick="AndroidBridge.openTranslator()">🌐 Переводчик</button>
             <button class="btn-translate-nav" onclick="AndroidBridge.openSearchTab('')" style="background: linear-gradient(135deg, #0ea5e9, #3b82f6);">🔍 Поиск книг</button>
+            <button class="btn-translate-nav" onclick="AndroidBridge.openArchitectTab && AndroidBridge.openArchitectTab()" style="background: linear-gradient(135deg, #f59e0b, #ef4444);">🤖 ИИ-архитектор</button>
         </div>
     </div>
 
@@ -1149,7 +1150,7 @@
                 subEl.textContent = '✅ Авторизован на 4PDA';
                 btnLogin.textContent = 'Выйти';
                 btnLogin.onclick = doLogout;
-                if (currentBook && currentBook.title) setTimeout(() => searchOnForum(), 400);
+                if (currentBook && currentBook.title && !window._architectMode) setTimeout(() => searchOnForum(), 400);
             } else {
                 block.className = 'auth-block';
                 nameEl.textContent = 'Не авторизован';
@@ -1329,8 +1330,8 @@
                 }
                 books.push(bookCopy);
             }
-            // Auto-search on first book only
-            if (books.length === 1 && currentBook.title) {
+            // Auto-search on first book only (skipped in architect mode — the orchestrator triggers this explicitly)
+            if (books.length === 1 && currentBook.title && !window._architectMode) {
                 setTimeout(() => searchOnForum(), 800);
             }
         }
@@ -2575,6 +2576,9 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
                 if (!rawResults || !rawResults.length) {
                     status('🔍 Темы не найдены', 'inf');
                     renderSearchResults([]);
+                    if (window._architectMode && window.AndroidBridge && AndroidBridge.notifyDuplicateCheckResult) {
+                        AndroidBridge.notifyDuplicateCheckResult('[]');
+                    }
                     return;
                 }
 
@@ -2593,8 +2597,15 @@ ${annotXML}${seqXML}${coverXML}<lang>${x(d.lang || 'ru')}</lang>
 
                 renderSearchResults(scored);
                 status('✅ Найдено тем: ' + scored.length, 'ok');
+
+                if (window._architectMode && window.AndroidBridge && AndroidBridge.notifyDuplicateCheckResult) {
+                    AndroidBridge.notifyDuplicateCheckResult(JSON.stringify(scored));
+                }
             } catch (e) {
                 console.error('Search finish error: ' + e);
+                if (window._architectMode && window.AndroidBridge && AndroidBridge.notifyArchitectError) {
+                    AndroidBridge.notifyArchitectError('dupcheck: ' + e.message);
+                }
             }
         };
 

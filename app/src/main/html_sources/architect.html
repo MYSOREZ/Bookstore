@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>ИИ-архитектор</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #f59e0b;
+            --primary-dark: #b45309;
+            --primary-glow: rgba(245, 158, 11, 0.35);
+            --bg: #0f172a;
+            --bg-dots: radial-gradient(#1e293b 1px, transparent 1px);
+            --card: rgba(30, 41, 59, 0.7);
+            --card-border: rgba(255, 255, 255, 0.1);
+            --text: #f8fafc;
+            --sub: #94a3b8;
+            --ok: #22c55e;
+            --err: #f43f5e;
+            --radius: 18px;
+        }
+
+        * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg);
+            background-image: var(--bg-dots);
+            background-size: 24px 24px;
+            color: var(--text);
+            min-height: 100vh;
+            padding-bottom: 60px;
+        }
+
+        .header {
+            background: linear-gradient(165deg, #b45309 0%, #f59e0b 100%);
+            padding: 26px 20px;
+            border-bottom-left-radius: 28px;
+            border-bottom-right-radius: 28px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3), 0 0 15px var(--primary-glow);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+        .header h1 { font-size: 20px; font-weight: 800; }
+        .header span { font-size: 12px; opacity: 0.85; display:block; margin-top:2px; }
+        .btn-back {
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.25);
+            color: #fff; padding: 8px 12px; border-radius: 12px;
+            font-size: 13px; font-weight: 700; cursor: pointer;
+        }
+
+        .section { padding: 0 16px; margin-bottom: 16px; }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius);
+            padding: 16px;
+            margin-bottom: 12px;
+            backdrop-filter: blur(10px);
+        }
+
+        .query-row { display:flex; gap:8px; }
+        input[type=text] {
+            flex:1; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--card-border);
+            background: rgba(15,23,42,0.6); color: var(--text); font-size: 14px;
+        }
+        button {
+            border:none; border-radius: 14px; padding: 12px 18px; font-weight: 700; font-size: 14px;
+            cursor:pointer; color:#fff; background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+        }
+        button:disabled { opacity: 0.5; }
+
+        .log-box {
+            font-family: monospace; font-size: 12px; color: var(--sub);
+            max-height: 160px; overflow-y: auto; white-space: pre-wrap;
+        }
+        .log-box div { padding: 2px 0; border-bottom: 1px dashed rgba(255,255,255,0.05); }
+
+        .candidate {
+            display:flex; flex-direction: column; gap:6px;
+            border: 1px solid var(--card-border); border-radius: 14px; padding: 12px; margin-bottom: 8px;
+            background: rgba(15,23,42,0.4);
+        }
+        .candidate-title { font-weight: 700; font-size: 14px; }
+        .candidate-meta { font-size: 12px; color: var(--sub); }
+        .fmt-row { display:flex; gap:6px; flex-wrap: wrap; margin-top: 4px; }
+        .fmt-btn {
+            background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4);
+            color: var(--text); padding: 6px 12px; border-radius: 10px; font-size: 12px; font-weight: 700;
+        }
+
+        .report-row { display:flex; gap:12px; align-items:flex-start; margin-bottom: 8px; }
+        .report-cover { width: 64px; height: 90px; object-fit: cover; border-radius: 8px; flex-shrink:0; background: rgba(255,255,255,0.05); }
+        .report-label { font-size: 11px; color: var(--sub); text-transform: uppercase; letter-spacing: 0.05em; }
+        .report-value { font-size: 14px; }
+        .annotation-box { font-size: 13px; color: var(--sub); max-height: 120px; overflow-y:auto; margin-top:6px; }
+
+        .dup-match { font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--card-border); }
+        .dup-score { color: var(--primary); font-weight: 700; }
+        .banner-warn { background: rgba(244,63,94,0.15); border: 1px solid rgba(244,63,94,0.4); border-radius: 14px; padding: 12px; font-size: 13px; }
+        .banner-ok { background: rgba(34,197,94,0.15); border: 1px solid rgba(34,197,94,0.4); border-radius: 14px; padding: 12px; font-size: 13px; }
+
+        .section-title { font-size: 13px; font-weight: 700; color: var(--sub); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+        a.link { color: var(--primary); }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <div style="flex:1">
+            <h1>🤖 ИИ-архитектор</h1>
+            <span>Поиск → скачивание → метаданные → проверка дублей → форма публикации</span>
+        </div>
+        <button class="btn-back" onclick="AndroidBridge.returnToParser()">← Назад</button>
+    </div>
+
+    <div class="section">
+        <div class="card">
+            <div class="query-row">
+                <input type="text" id="queryInput" placeholder="Автор и/или название книги…">
+                <button id="btnStart" onclick="startPipeline()">Запустить</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="section-title">Ход выполнения</div>
+            <div class="log-box" id="logBox"></div>
+        </div>
+
+        <div class="card" id="candidatesCard" style="display:none">
+            <div class="section-title">Найденные варианты — выберите нужный</div>
+            <div id="candidatesList"></div>
+        </div>
+
+        <div class="card" id="extractedCard" style="display:none">
+            <div class="section-title">Извлечённые данные</div>
+            <div id="extractedBody"></div>
+        </div>
+
+        <div class="card" id="duplicateCard" style="display:none">
+            <div class="section-title">Проверка Книгохранилища</div>
+            <div id="duplicateBody"></div>
+        </div>
+
+        <div class="card" id="readyCard" style="display:none">
+            <div class="banner-ok">✅ Форма на форуме заполнена и ждёт вашей проверки. Ничего не отправлено — сабмит только вручную.</div>
+            <button style="margin-top:10px" onclick="AndroidBridge.openForumForReview()">Перейти на форум для проверки и отправки</button>
+        </div>
+    </div>
+
+    <script>
+        function log(msg) {
+            const box = document.getElementById('logBox');
+            const line = document.createElement('div');
+            const time = new Date().toLocaleTimeString();
+            line.textContent = `[${time}] ${msg}`;
+            box.appendChild(line);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function esc(s) {
+            return (s || '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+
+        function hide(id) { document.getElementById(id).style.display = 'none'; }
+        function show(id) { document.getElementById(id).style.display = 'block'; }
+
+        function startPipeline() {
+            const q = document.getElementById('queryInput').value.trim();
+            if (!q) { log('❌ Введите автора или название'); return; }
+            document.getElementById('logBox').innerHTML = '';
+            hide('candidatesCard'); hide('extractedCard'); hide('duplicateCard'); hide('readyCard');
+            document.getElementById('btnStart').disabled = true;
+            if (window.AndroidBridge && AndroidBridge.startSearch) {
+                AndroidBridge.startSearch(q);
+            } else {
+                log('❌ Функция доступна только в приложении');
+            }
+        }
+
+        function fmtIcon(label) {
+            const l = (label || '').toLowerCase();
+            if (l.includes('fb2')) return '📘';
+            if (l.includes('epub')) return '📗';
+            if (l.includes('pdf')) return '📕';
+            return '📁';
+        }
+
+        function renderCandidates(items) {
+            const list = document.getElementById('candidatesList');
+            list.innerHTML = '';
+            if (!items || !items.length) {
+                list.innerHTML = '<div class="candidate-meta">Ничего не найдено на подключённых источниках.</div>';
+                show('candidatesCard');
+                return;
+            }
+            items.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'candidate';
+                let fmtHtml = '';
+                (item.formats || []).forEach(f => {
+                    const payload = {
+                        source: item.source, title: item.title, author: item.author,
+                        pageUrl: item.pageUrl, formatLabel: f.label, formatUrl: f.url
+                    };
+                    fmtHtml += `<button class="fmt-btn" onclick='selectCandidate(${JSON.stringify(payload)})'>${fmtIcon(f.label)} ${esc(f.label)}</button>`;
+                });
+                div.innerHTML = `
+                    <div class="candidate-title">${esc(item.title)}</div>
+                    <div class="candidate-meta">${esc(item.author || '')} · ${esc(item.source || '')}</div>
+                    <div class="fmt-row">${fmtHtml}</div>`;
+                list.appendChild(div);
+            });
+            show('candidatesCard');
+        }
+
+        function selectCandidate(payload) {
+            document.getElementById('btnStart').disabled = true;
+            hide('extractedCard'); hide('duplicateCard'); hide('readyCard');
+            if (window.AndroidBridge && AndroidBridge.selectCandidate) {
+                AndroidBridge.selectCandidate(JSON.stringify(payload));
+            }
+        }
+
+        function renderExtracted(book) {
+            const body = document.getElementById('extractedBody');
+            const coverSrc = (book.cover && book.cover.data) ? `data:${book.cover.mime || 'image/jpeg'};base64,${book.cover.data}` : '';
+            body.innerHTML = `
+                <div class="report-row">
+                    ${coverSrc ? `<img class="report-cover" src="${coverSrc}">` : ''}
+                    <div style="flex:1">
+                        <div class="report-label">Название</div>
+                        <div class="report-value">${esc(book.title)}</div>
+                        <div class="report-label" style="margin-top:6px">Автор</div>
+                        <div class="report-value">${esc(book.author)}</div>
+                        ${book.series ? `<div class="report-label" style="margin-top:6px">Серия</div><div class="report-value">${esc(book.series)} ${esc(book.seriesNum || '')}</div>` : ''}
+                    </div>
+                </div>
+                <div class="report-label">Аннотация</div>
+                <div class="annotation-box">${esc(book.annotation) || '—'}</div>`;
+            show('extractedCard');
+        }
+
+        function renderDuplicates(matches, likelyDuplicate) {
+            const body = document.getElementById('duplicateBody');
+            let html = '';
+            if (likelyDuplicate) {
+                html += `<div class="banner-warn">⛔ Похоже, эта книга уже есть в Книгохранилище — публикация не готовится. Проверьте ссылки ниже.</div>`;
+            } else if (!matches || !matches.length) {
+                html += `<div class="banner-ok">✅ Совпадений не найдено — можно готовить публикацию.</div>`;
+            } else {
+                html += `<div class="banner-ok">✅ Явных совпадений нет, но вот похожие темы — стоит проверить глазами.</div>`;
+            }
+            (matches || []).slice(0, 5).forEach(m => {
+                html += `<div class="dup-match"><a class="link" href="#" onclick="AndroidBridge.openForumForReview();return false;">${esc(m.title)}</a> <span class="dup-score">score: ${m.score}</span></div>`;
+            });
+            body.innerHTML = html;
+            show('duplicateCard');
+        }
+
+        window.onArchitectStep = function (step) {
+            switch (step.type) {
+                case 'searching':
+                    log('🔍 Ищу по подключённым источникам…');
+                    break;
+                case 'candidates':
+                    log('📚 Найдено вариантов: ' + (step.items ? step.items.length : 0));
+                    renderCandidates(step.items || []);
+                    document.getElementById('btnStart').disabled = false;
+                    break;
+                case 'downloading':
+                    log('⬇️ Скачиваю: ' + ((step.candidate && step.candidate.title) || '…'));
+                    break;
+                case 'parsing':
+                    log('📖 Извлекаю метаданные (аннотация, обложка)…');
+                    break;
+                case 'extracted':
+                    log('✅ Метаданные извлечены');
+                    renderExtracted(step.book || {});
+                    break;
+                case 'checking_duplicate':
+                    log('🔁 Проверяю Книгохранилище на дубли…');
+                    break;
+                case 'duplicate_result':
+                    log('🔎 Проверка дублей завершена (совпадений: ' + ((step.matches && step.matches.length) || 0) + ')');
+                    renderDuplicates(step.matches || [], !!step.likelyDuplicate);
+                    break;
+                case 'stopped_duplicate':
+                    log('⛔ Похоже, книга уже есть — публикация не готовится.');
+                    document.getElementById('btnStart').disabled = false;
+                    break;
+                case 'filling_form':
+                    log('📝 Заполняю форму публикации на форуме…');
+                    break;
+                case 'publish_ready':
+                    log('✅ Форма заполнена. Проверьте и отправьте вручную.');
+                    show('readyCard');
+                    document.getElementById('btnStart').disabled = false;
+                    break;
+                case 'error':
+                    log('❌ Ошибка: ' + step.message);
+                    document.getElementById('btnStart').disabled = false;
+                    break;
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('queryInput').addEventListener('keydown', e => { if (e.key === 'Enter') startPipeline(); });
+        });
+    </script>
+</body>
+
+</html>

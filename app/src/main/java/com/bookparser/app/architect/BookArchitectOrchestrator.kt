@@ -1,0 +1,243 @@
+package com.bookparser.app.architect
+
+import android.content.Context
+import android.util.Base64
+import android.webkit.CookieManager
+import com.bookparser.app.AppLogger
+import com.bookparser.app.MainActivity
+import com.bookparser.app.web.search.BookSearchManager
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
+
+/**
+ * Orchestrates the existing search → download → parse → duplicate-check → publish-prefill
+ * pipeline (search.html / parser.html / forum WebView) from one entry point, driven by
+ * architect.html. Reuses the existing JS logic as-is (parseOnMain(), searchOnForum(),
+ * sendToForum(), scoreTopic()) instead of reimplementing FB2/EPUB parsing or forum DOM
+ * automation — it only feeds bytes in and listens for the same callbacks parser.html already
+ * produces. Always stops before the forum's Submit button; the user sends the post manually.
+ */
+class BookArchitectOrchestrator(private val activity: MainActivity) {
+
+    companion object {
+        private const val TAG = "ARCHITECT"
+
+        // Above this score (see parser.html's scoreTopic()) a forum match is treated as
+        // "likely the same book" and publishing is not prepared automatically.
+        private const val DUPLICATE_SCORE_THRESHOLD = 5
+
+        private val DEFAULT_DOMAINS = mapOf(
+            "flibusta" to "http://flibusta.is",
+            "annas" to "https://annas-archive.gd",
+            "zlib" to "https://ru.z-lib.fm",
+            "librain" to "https://librain.ru"
+        )
+    }
+
+    private val searchManager = BookSearchManager()
+    private var parsedDeferred: CompletableDeferred<String>? = null
+    private var duplicateDeferred: CompletableDeferred<String>? = null
+
+    fun startSearch(query: String) {
+        activity.lifecycleScope.launch {
+            report(JSONObject().put("type", "searching"))
+            try {
+                val items = searchAllSites(query)
+                report(JSONObject().put("type", "candidates").put("items", items))
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Search failed: ${e.message}")
+                reportError("Ошибка поиска: ${e.message}")
+            }
+        }
+    }
+
+    fun selectCandidate(candidateJson: String) {
+        activity.lifecycleScope.launch {
+            try {
+                val candidate = JSONObject(candidateJson)
+                report(JSONObject().put("type", "downloading").put("candidate", candidate))
+
+                val formatUrl = candidate.optString("formatUrl")
+                if (formatUrl.isEmpty()) {
+                    reportError("У выбранного варианта нет ссылки на файл")
+                    return@launch
+                }
+                val fileName = buildFileName(candidate)
+
+                val bytes = downloadBytes(formatUrl)
+                if (bytes == null || bytes.isEmpty()) {
+                    reportError("Не удалось скачать файл")
+                    return@launch
+                }
+
+                report(JSONObject().put("type", "parsing"))
+                val bookJson = feedToParserAndAwait(bytes, fileName)
+                if (bookJson == null) {
+                    reportError("Не удалось извлечь метаданные из файла (тайм-аут разбора)")
+                    return@launch
+                }
+                report(JSONObject().put("type", "extracted").put("book", JSONObject(bookJson)))
+
+                report(JSONObject().put("type", "checking_duplicate"))
+                val dupArray = runDuplicateCheck()
+                val topScore = if (dupArray.length() > 0) dupArray.getJSONObject(0).optInt("score", 0) else 0
+                val likelyDuplicate = topScore >= DUPLICATE_SCORE_THRESHOLD
+                report(
+                    JSONObject()
+                        .put("type", "duplicate_result")
+                        .put("matches", dupArray)
+                        .put("likelyDuplicate", likelyDuplicate)
+                )
+
+                if (likelyDuplicate) {
+                    report(JSONObject().put("type", "stopped_duplicate"))
+                } else {
+                    requestPublishPrefill()
+                }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Pipeline failed: ${e.message}")
+                reportError("Ошибка: ${e.message}")
+            }
+        }
+    }
+
+    fun requestPublishPrefill() {
+        report(JSONObject().put("type", "filling_form"))
+        activity.isArchitectPublishing = true
+        activity.parserCallback("(function(){ if (typeof sendToForum === 'function') sendToForum(); })();")
+        // Completion arrives later via onPublishComplete()/onError(), invoked from
+        // MainActivity.processPendingPublication() once the forum form is filled.
+    }
+
+    fun onBookParsed(json: String) {
+        parsedDeferred?.complete(json)
+        parsedDeferred = null
+    }
+
+    fun onDuplicateCheckResult(json: String) {
+        duplicateDeferred?.complete(json)
+        duplicateDeferred = null
+    }
+
+    fun onPublishComplete() {
+        report(JSONObject().put("type", "publish_ready"))
+    }
+
+    fun onError(message: String) {
+        reportError(message)
+    }
+
+    private suspend fun searchAllSites(query: String): JSONArray {
+        val savedDomains = try {
+            JSONObject(
+                activity.getSharedPreferences("book_search", Context.MODE_PRIVATE)
+                    .getString("domains", "{}") ?: "{}"
+            )
+        } catch (e: Exception) {
+            JSONObject()
+        }
+
+        val deferreds = DEFAULT_DOMAINS.map { (siteId, defaultDomain) ->
+            val domain = savedDomains.optString(siteId).takeIf { it.isNotEmpty() } ?: defaultDomain
+            val deferred = CompletableDeferred<JSONArray>()
+            searchManager.search(
+                siteId = siteId,
+                query = query,
+                domain = domain,
+                scope = activity.lifecycleScope,
+                onResult = { id, json ->
+                    val arr = try { JSONArray(json) } catch (e: Exception) { JSONArray() }
+                    for (i in 0 until arr.length()) arr.getJSONObject(i).put("source", id)
+                    deferred.complete(arr)
+                },
+                onError = { _, _ -> deferred.complete(JSONArray()) }
+            )
+            deferred
+        }
+
+        val merged = JSONArray()
+        deferreds.forEach { deferred ->
+            val arr = withTimeoutOrNull(25_000) { deferred.await() } ?: JSONArray()
+            for (i in 0 until arr.length()) merged.put(arr.getJSONObject(i))
+        }
+        return merged
+    }
+
+    private fun buildFileName(candidate: JSONObject): String {
+        val author = candidate.optString("author").trim()
+        val title = candidate.optString("title").trim()
+        val label = candidate.optString("formatLabel", "fb2").lowercase()
+        val base = (if (author.isNotEmpty()) "$author - $title" else title).ifBlank { "book" }
+        return if (base.lowercase().endsWith(".$label")) base else "$base.$label"
+    }
+
+    private suspend fun downloadBytes(url: String): ByteArray? = withContext(Dispatchers.IO) {
+        try {
+            val client = OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .followRedirects(true)
+                .build()
+            val requestBuilder = Request.Builder()
+                .url(url)
+                .header("User-Agent", MainActivity.MOBILE_UA)
+            val cookies = CookieManager.getInstance().getCookie(url)
+            if (!cookies.isNullOrEmpty()) requestBuilder.header("Cookie", cookies)
+            val response = client.newCall(requestBuilder.build()).execute()
+            if (response.isSuccessful) response.body?.bytes() else null
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Download failed: ${e.message}")
+            null
+        }
+    }
+
+    /** Feeds bytes into parser.html the same way parseOnMain() already does, then awaits addBook(). */
+    private suspend fun feedToParserAndAwait(bytes: ByteArray, fileName: String): String? {
+        val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+        val deferred = CompletableDeferred<String>()
+        parsedDeferred = deferred
+        val js = """
+            (function(){
+                window._architectMode = true;
+                window._parsedFiles = [{ fileBase64: ${JSONObject.quote(base64)}, fileName: ${JSONObject.quote(fileName)} }];
+                parseOnMain().then(function(){
+                    if (window.AndroidBridge && AndroidBridge.notifyBookParsed) {
+                        AndroidBridge.notifyBookParsed(JSON.stringify(currentBook));
+                    }
+                }).catch(function(e){
+                    if (window.AndroidBridge && AndroidBridge.notifyArchitectError) {
+                        AndroidBridge.notifyArchitectError('parse: ' + (e && e.message ? e.message : e));
+                    }
+                });
+            })();
+        """.trimIndent()
+        activity.parserCallback(js)
+        return withTimeoutOrNull(60_000) { deferred.await() }
+    }
+
+    /** Reuses parser.html's searchOnForum() — same query derivation & scoreTopic() ranking as manual search. */
+    private suspend fun runDuplicateCheck(): JSONArray {
+        val deferred = CompletableDeferred<String>()
+        duplicateDeferred = deferred
+        activity.parserCallback("(function(){ if (typeof searchOnForum === 'function') searchOnForum(); })();")
+        val json = withTimeoutOrNull(20_000) { deferred.await() } ?: "[]"
+        return try { JSONArray(json) } catch (e: Exception) { JSONArray() }
+    }
+
+    private fun report(json: JSONObject) {
+        activity.architectCallback("window.onArchitectStep && window.onArchitectStep(${json});")
+    }
+
+    private fun reportError(message: String) {
+        report(JSONObject().put("type", "error").put("message", message))
+    }
+}
