@@ -638,6 +638,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         @android.webkit.JavascriptInterface
+        fun logFromJs(msg: String) {
+            AppLogger.i("ARCHITECT_JS", msg)
+        }
+
+        @android.webkit.JavascriptInterface
         fun openTranslator(fileBase64: String, fileName: String) {
             runOnUiThread {
                 showTranslatorWebView()

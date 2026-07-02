@@ -11,6 +11,9 @@ import com.bookparser.app.web.search.DohHttpClient
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -83,6 +86,7 @@ class BookArchitectOrchestrator(private val activity: MainActivity) {
             try {
                 val candidate = JSONObject(candidateJson)
                 report(JSONObject().put("type", "downloading").put("candidate", candidate))
+                AppLogger.i(TAG, "selectCandidate: ${candidate.optString("title")} / ${candidate.optString("formatLabel")} / ${candidate.optString("formatUrl")}")
 
                 val formatUrl = candidate.optString("formatUrl")
                 if (formatUrl.isEmpty()) {
@@ -93,9 +97,10 @@ class BookArchitectOrchestrator(private val activity: MainActivity) {
 
                 val bytes = downloadBytes(formatUrl)
                 if (bytes == null || bytes.isEmpty()) {
-                    reportError("Не удалось скачать файл")
+                    reportError("Не удалось скачать файл (обе попытки — через DoH и напрямую — не дали годного содержимого)")
                     return@launch
                 }
+                AppLogger.i(TAG, "Downloaded ${bytes.size} bytes for $fileName")
 
                 report(JSONObject().put("type", "parsing"))
                 val bookJson = feedToParserAndAwait(bytes, fileName)
@@ -104,6 +109,12 @@ class BookArchitectOrchestrator(private val activity: MainActivity) {
                     return@launch
                 }
                 val book = JSONObject(bookJson)
+                AppLogger.i(TAG, "Parsed: title='${book.optString("title")}' author='${book.optString("author")}'")
+
+                if (book.optString("title").isBlank() && book.optString("author").isBlank()) {
+                    reportError("Файл скачался, но парсер не нашёл ни названия, ни автора — похоже, скачан не тот файл (например, страница-заглушка вместо книги). Попробуйте другой источник/формат.")
+                    return@launch
+                }
                 report(JSONObject().put("type", "extracted").put("book", book))
 
                 val key = apiKey()
@@ -225,34 +236,70 @@ class BookArchitectOrchestrator(private val activity: MainActivity) {
     /**
      * Some sources (flibusta in particular) are DNS-blocked for plain requests — search already
      * works around this via DohHttpClient's DNS-over-HTTPS resolution, so downloads need the same
-     * workaround. Try DoH first, fall back to a direct OkHttp request for sources that don't need it.
+     * workaround. DoH and a direct OkHttp request are raced concurrently rather than tried in
+     * sequence, since which one actually works varies by source/network and sequential retries
+     * cost up to a minute of dead waiting before falling back.
      */
-    private suspend fun downloadBytes(url: String): ByteArray? {
+    private suspend fun downloadBytes(url: String): ByteArray? = coroutineScope {
         val cookies = CookieManager.getInstance().getCookie(url)
         val cookieHeader: Map<String, String> =
             cookies?.takeIf { it.isNotEmpty() }?.let { mapOf("Cookie" to it) } ?: emptyMap()
 
-        val viaDoh = DohHttpClient.INSTANCE.fetchViaDohBytes(url, cookieHeader)?.first
-        if (viaDoh != null && viaDoh.isNotEmpty()) return viaDoh
-
-        return withContext(Dispatchers.IO) {
-            try {
-                val client = OkHttpClient.Builder()
-                    .connectTimeout(30, TimeUnit.SECONDS)
-                    .readTimeout(60, TimeUnit.SECONDS)
-                    .followRedirects(true)
-                    .build()
-                val requestBuilder = Request.Builder()
-                    .url(url)
-                    .header("User-Agent", MainActivity.MOBILE_UA)
-                cookieHeader["Cookie"]?.let { requestBuilder.header("Cookie", it) }
-                val response = client.newCall(requestBuilder.build()).execute()
-                if (response.isSuccessful) response.body?.bytes() else null
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Download failed: ${e.message}")
-                null
-            }
+        val dohAttempt = async {
+            runCatching { DohHttpClient.INSTANCE.fetchViaDohBytes(url, cookieHeader)?.first }
+                .getOrNull()
+                .also { AppLogger.i(TAG, "Download via DoH: ${it?.size ?: 0} bytes") }
         }
+        val directAttempt = async {
+            runCatching { downloadDirect(url, cookieHeader) }
+                .getOrNull()
+                .also { AppLogger.i(TAG, "Download direct: ${it?.size ?: 0} bytes") }
+        }
+
+        // True race — whichever finishes first with a plausible file wins immediately instead of
+        // always waiting for both (which used to mean eating DoH's full timeout even when the
+        // direct request already succeeded in a couple of seconds).
+        val first = select<ByteArray?> {
+            dohAttempt.onAwait { it }
+            directAttempt.onAwait { it }
+        }
+        if (isPlausibleBookFile(first)) {
+            dohAttempt.cancel()
+            directAttempt.cancel()
+            return@coroutineScope first
+        }
+        val second = if (dohAttempt.isCompleted) directAttempt.await() else dohAttempt.await()
+        second.takeIf { isPlausibleBookFile(it) }
+    }
+
+    private suspend fun downloadDirect(url: String, cookieHeader: Map<String, String>): ByteArray? =
+        withContext(Dispatchers.IO) {
+            val client = OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .followRedirects(true)
+                .build()
+            val requestBuilder = Request.Builder()
+                .url(url)
+                .header("User-Agent", MainActivity.MOBILE_UA)
+            cookieHeader["Cookie"]?.let { requestBuilder.header("Cookie", it) }
+            val response = client.newCall(requestBuilder.build()).execute()
+            if (response.isSuccessful) response.body?.bytes() else null
+        }
+
+    /**
+     * Anti-bot/challenge/login pages come back as HTTP 200 with real bytes, so a plain
+     * null/empty check isn't enough — sniff for an HTML error page masquerading as the book file
+     * (same check used elsewhere in the app for forum attachment downloads).
+     */
+    private fun isPlausibleBookFile(bytes: ByteArray?): Boolean {
+        if (bytes == null || bytes.size < 64) return false
+        val head = try {
+            String(bytes.copyOfRange(0, minOf(200, bytes.size)), Charsets.UTF_8).lowercase()
+        } catch (e: Exception) {
+            return true // binary content (e.g. epub/zip) that isn't valid UTF-8 text is fine
+        }
+        return !head.contains("<!doctype html") && !head.contains("<html")
     }
 
     /** Feeds bytes into parser.html the same way parseOnMain() already does, then awaits addBook(). */
@@ -264,7 +311,13 @@ class BookArchitectOrchestrator(private val activity: MainActivity) {
             (function(){
                 window._architectMode = true;
                 window._parsedFiles = [{ fileBase64: ${JSONObject.quote(base64)}, fileName: ${JSONObject.quote(fileName)} }];
+                if (window.AndroidBridge && AndroidBridge.logFromJs) {
+                    AndroidBridge.logFromJs('ARCHITECT parseOnMain: fileName=${JSONObject.quote(fileName)}, base64Len=' + ${base64.length});
+                }
                 parseOnMain().then(function(){
+                    if (window.AndroidBridge && AndroidBridge.logFromJs) {
+                        AndroidBridge.logFromJs('ARCHITECT parsed currentBook: title=' + (currentBook && currentBook.title) + ' author=' + (currentBook && currentBook.author));
+                    }
                     if (window.AndroidBridge && AndroidBridge.notifyBookParsed) {
                         AndroidBridge.notifyBookParsed(JSON.stringify(currentBook));
                     }
@@ -283,9 +336,18 @@ class BookArchitectOrchestrator(private val activity: MainActivity) {
     private suspend fun runDuplicateCheck(): JSONArray {
         val deferred = CompletableDeferred<String>()
         duplicateDeferred = deferred
-        activity.parserCallback("(function(){ if (typeof searchOnForum === 'function') searchOnForum(); })();")
-        val json = withTimeoutOrNull(20_000) { deferred.await() } ?: "[]"
-        return try { JSONArray(json) } catch (e: Exception) { JSONArray() }
+        activity.parserCallback("""
+            (function(){
+                if (window.AndroidBridge && AndroidBridge.logFromJs) {
+                    AndroidBridge.logFromJs('ARCHITECT dup-check for: author=' + (currentBook && currentBook.author) + ' title=' + (currentBook && currentBook.title));
+                }
+                if (typeof searchOnForum === 'function') searchOnForum();
+                else if (window.AndroidBridge && AndroidBridge.notifyArchitectError) AndroidBridge.notifyArchitectError('dupcheck: searchOnForum not found');
+            })();
+        """.trimIndent())
+        val json = withTimeoutOrNull(30_000) { deferred.await() }
+        if (json == null) AppLogger.e(TAG, "Duplicate check timed out")
+        return try { JSONArray(json ?: "[]") } catch (e: Exception) { JSONArray() }
     }
 
     private fun report(json: JSONObject) {
