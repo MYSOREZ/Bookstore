@@ -35,3 +35,4 @@ jobs:
       with:
         name: Bookstore-APK-debug
         path: app/build/outputs/apk/debug/Bookstore-*.apk
+        retention-days: 7
